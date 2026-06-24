@@ -3,7 +3,7 @@
 import { t } from '../i18n';
 import type { Objetivo } from '../../content/chapters/types';
 
-export type HUDMode = 'refraccion' | 'reflexion' | 'fermat-reflexion' | 'dispersion' | 'lentes' | 'oculto';
+export type HUDMode = 'refraccion' | 'reflexion' | 'fermat-reflexion' | 'dispersion' | 'lentes' | 'aberraciones' | 'instrumentos' | 'oculto';
 
 export interface HUDState {
   n1: number;
@@ -22,6 +22,18 @@ export interface HUDState {
   lentesSPrima?: number;
   lentesM?: number;
   lentesF?: number;
+  /** Aberración esférica longitudinal (modo aberraciones) */
+  aberracionLSA?: number;
+  /** Aberración cromática longitudinal (modo aberraciones) */
+  aberracionLCA?: number;
+  /** Apertura normalizada actual (modo aberraciones) */
+  apertura?: number;
+  /** Separación entre lentes (modo instrumentos) */
+  instrumentosSeparacion?: number;
+  /** f1+f2 de referencia (modo instrumentos) */
+  instrumentosAfocal?: number;
+  /** Aumento angular (modo instrumentos) */
+  instrumentosAumento?: number;
 }
 
 export interface HUDHandle {
@@ -39,11 +51,17 @@ export function hudModeFromObjetivo(objetivo: Objetivo | undefined): HUDMode {
     case 'fermat':           return 'refraccion';
     case 'dispersion':       return 'dispersion';
     case 'lentes':           return 'lentes';
+    case 'aberraciones':     return 'aberraciones';
+    case 'instrumentos':     return 'instrumentos';
     default:                 return 'refraccion';
   }
 }
 
 export function mountHUD(container: HTMLElement, initial: HUDState): HUDHandle {
+  // Invariante: el HUD es un singleton. Elimina cualquier panel previo huérfano
+  // (evita el "HUD fantasma" si quedara uno de un montaje anterior).
+  document.querySelectorAll('.hud').forEach((el) => el.remove());
+
   // Si el modo es 'oculto', no montar nada
   if (initial.mode === 'oculto') {
     return {
@@ -117,6 +135,32 @@ export function mountHUD(container: HTMLElement, initial: HUDState): HUDHandle {
         <span class="hud__value">${fmt(m, 2)}</span>
         <span class="hud__label">${t('lentes.bench.f')}</span>
         <span class="hud__value">${fmt(f, 2)}</span>
+      `;
+    } else if (mode === 'aberraciones') {
+      titleText = t('aberraciones.titulo');
+      const lsa = s.aberracionLSA ?? 0;
+      const lca = s.aberracionLCA ?? 0;
+      const ap = s.apertura ?? 0;
+      bodyContent = `
+        <span class="hud__label">${t('aberraciones.bench.apertura')}</span>
+        <span class="hud__value">${fmt(ap, 3)}</span>
+        <span class="hud__label">${t('aberraciones.bench.lsa')}</span>
+        <span class="hud__value">${fmt(Math.abs(lsa), 4)}</span>
+        <span class="hud__label">${t('aberraciones.bench.lca')}</span>
+        <span class="hud__value">${fmt(Math.abs(lca), 4)}</span>
+      `;
+    } else if (mode === 'instrumentos') {
+      titleText = t('instrumentos.titulo');
+      const sep = s.instrumentosSeparacion ?? 0;
+      const afocal = s.instrumentosAfocal ?? 0;
+      const aumento = s.instrumentosAumento ?? 0;
+      bodyContent = `
+        <span class="hud__label">${t('instrumentos.bench.separacion')}</span>
+        <span class="hud__value">${fmt(sep, 3)}</span>
+        <span class="hud__label">${t('instrumentos.bench.f1f2')}</span>
+        <span class="hud__value">${fmt(afocal, 3)}</span>
+        <span class="hud__label">${t('instrumentos.bench.aumento')}</span>
+        <span class="hud__value">${fmt(aumento, 2)}×</span>
       `;
     } else {
       // Capítulo de refracción (modo por defecto)

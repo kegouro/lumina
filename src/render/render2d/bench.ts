@@ -13,6 +13,7 @@ import { trazarRayos } from '../../core/content/optics';
 import { nSellmeier, prismaDesviacion, desviacionMinima } from '../../core/dispersion';
 import type { MaterialOptico } from '../../core/dispersion';
 import { imagenParaxialLente, trazarAbanico } from '../../core/imaging';
+import { aberracionEsferica, aberracionCromatica } from '../../core/aberration';
 
 export interface BenchConfig {
   canvas: HTMLCanvasElement;
@@ -40,6 +41,26 @@ export interface BenchConfig {
   lentesF?: number;
   /** Posición x normalizada del objeto para el modo lentes (arrastrable) */
   lentesObjX?: number;
+  /** Modo aberraciones: abanico multi-altura con mancha de desenfoque */
+  aberracionesMode?: boolean;
+  /** Focal de la lente en modo aberraciones */
+  aberracionesF?: number;
+  /** Apertura actual normalizada del diafragma (0..1 donde 1 = apertura máxima) */
+  apertura?: number;
+  /** Apertura máxima normalizada en modo aberraciones */
+  aperturaMax?: number;
+  /** Modo instrumentos: dos lentes, separación ajustable */
+  instrumentosMode?: boolean;
+  /** Focal de la lente 1 (objetivo) en modo instrumentos */
+  instrumentosF1?: number;
+  /** Focal de la lente 2 (ocular) en modo instrumentos */
+  instrumentosF2?: number;
+  /** Separación entre las dos lentes en modo instrumentos */
+  instrumentosSeparacion?: number;
+  /** Callback cuando cambia la apertura en modo aberraciones */
+  onAperturaChange?: (apertura: number) => void;
+  /** Callback cuando cambia la separación en modo instrumentos */
+  onSeparacionChange?: (separacion: number) => void;
   onAngleChange: (theta: number) => void;
   onFermatPChange: (py: number) => void;  // py en coordenadas bench norm [-1, 1]
   onPinholeSizeChange?: (size: number) => void;
@@ -135,6 +156,18 @@ export class Bench {
   private lentesF: number = 0.30;
   private lentesObjX: number = -0.60;   // posición x del objeto arrastrable
 
+  // Aberraciones
+  private aberracionesMode: boolean = false;
+  private aberracionesF: number = 0.30;
+  private apertura: number = 1.0;        // 0 (cerrado) .. 1 (máxima apertura)
+  private aperturaMax: number = 0.45;
+
+  // Instrumentos
+  private instrumentosMode: boolean = false;
+  private instrumentosF1: number = 0.38;
+  private instrumentosF2: number = 0.18;
+  private instrumentosSeparacion: number = 0.40;
+
   // Geometría del bench en píxeles (se recalcula en resize)
   private W = 0;
   private H = 0;
@@ -166,6 +199,14 @@ export class Bench {
     if (config.lentesMode !== undefined) this.lentesMode = config.lentesMode;
     if (config.lentesF !== undefined) this.lentesF = config.lentesF;
     if (config.lentesObjX !== undefined) this.lentesObjX = config.lentesObjX;
+    if (config.aberracionesMode !== undefined) this.aberracionesMode = config.aberracionesMode;
+    if (config.aberracionesF !== undefined) this.aberracionesF = config.aberracionesF;
+    if (config.apertura !== undefined) this.apertura = config.apertura;
+    if (config.aperturaMax !== undefined) this.aperturaMax = config.aperturaMax;
+    if (config.instrumentosMode !== undefined) this.instrumentosMode = config.instrumentosMode;
+    if (config.instrumentosF1 !== undefined) this.instrumentosF1 = config.instrumentosF1;
+    if (config.instrumentosF2 !== undefined) this.instrumentosF2 = config.instrumentosF2;
+    if (config.instrumentosSeparacion !== undefined) this.instrumentosSeparacion = config.instrumentosSeparacion;
 
     const ctx = this.canvas.getContext('2d');
     if (!ctx) throw new Error('No se pudo obtener el contexto 2D del canvas');
@@ -192,6 +233,14 @@ export class Bench {
     if (s.lentesMode !== undefined) this.lentesMode = s.lentesMode;
     if (s.lentesF !== undefined) this.lentesF = s.lentesF;
     if (s.lentesObjX !== undefined) this.lentesObjX = s.lentesObjX;
+    if (s.aberracionesMode !== undefined) this.aberracionesMode = s.aberracionesMode;
+    if (s.aberracionesF !== undefined) this.aberracionesF = s.aberracionesF;
+    if (s.apertura !== undefined) this.apertura = s.apertura;
+    if (s.aperturaMax !== undefined) this.aperturaMax = s.aperturaMax;
+    if (s.instrumentosMode !== undefined) this.instrumentosMode = s.instrumentosMode;
+    if (s.instrumentosF1 !== undefined) this.instrumentosF1 = s.instrumentosF1;
+    if (s.instrumentosF2 !== undefined) this.instrumentosF2 = s.instrumentosF2;
+    if (s.instrumentosSeparacion !== undefined) this.instrumentosSeparacion = s.instrumentosSeparacion;
     this.triggerPulse();
   }
 
@@ -261,6 +310,16 @@ export class Bench {
 
     if (this.lentesMode) {
       this.drawLentes();
+      return;
+    }
+
+    if (this.aberracionesMode) {
+      this.drawAberraciones();
+      return;
+    }
+
+    if (this.instrumentosMode) {
+      this.drawInstrumentos();
       return;
     }
 
@@ -1124,6 +1183,387 @@ export class Bench {
     ctx.restore();
   }
 
+  // ── Aberraciones (abanico multi-altura + mancha) ────────────────────────
+
+  /**
+   * Dibuja el banco de aberraciones:
+   * - Lente convergente en x=0
+   * - Abanico de rayos a distintas alturas (rayos marginales vs paraxiales)
+   * - Los rayos NO convergen al mismo punto → mancha de desenfoque (caústica)
+   * - Focos paraxial vs marginal marcados con colores distintos
+   * - Aberración cromática: rayos de 3 λ (rojo, verde, azul) enfocan en distintos puntos
+   * - Slider de apertura (arrastrar verticalmente): cierra el diafragma
+   */
+  private drawAberraciones(): void {
+    const ctx = this.ctx;
+
+    // Fondo oscuro
+    ctx.save();
+    ctx.fillStyle = '#0d0c0a';
+    ctx.fillRect(0, 0, this.W, this.H);
+    ctx.restore();
+
+    this.drawEjeOptico();
+
+    const f = this.aberracionesF;
+    const aperturaActual = Math.max(0.01, this.apertura);
+    const yMax = this.aperturaMax * aperturaActual;  // altura máxima de los rayos
+
+    // Lente: elipse biconvexa en x=0
+    const lentePx = this.normToPx(0, 0);
+    const lH = this.CY * 0.65;
+    const lW = 14;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(56,189,248,0.7)';
+    ctx.fillStyle = 'rgba(56,189,248,0.06)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(lentePx.x, lentePx.y - lH);
+    ctx.bezierCurveTo(lentePx.x - lW, lentePx.y - lH * 0.5, lentePx.x - lW, lentePx.y + lH * 0.5, lentePx.x, lentePx.y + lH);
+    ctx.bezierCurveTo(lentePx.x + lW, lentePx.y + lH * 0.5, lentePx.x + lW, lentePx.y - lH * 0.5, lentePx.x, lentePx.y - lH);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+
+    // Diafragma: barras encima y debajo de la apertura
+    const yMaxPx = this.normToPx(-0.2, yMax);
+    const yMinPx = this.normToPx(-0.2, -yMax);
+    const diaX = this.normToPx(-0.20, 0).x;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(245,167,44,0.7)';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'butt';
+    // Barra superior
+    ctx.beginPath();
+    ctx.moveTo(diaX, 0);
+    ctx.lineTo(diaX, yMaxPx.y);
+    ctx.stroke();
+    // Barra inferior
+    ctx.beginPath();
+    ctx.moveTo(diaX, yMinPx.y);
+    ctx.lineTo(diaX, this.H);
+    ctx.stroke();
+    // Borde del agujero
+    ctx.strokeStyle = 'rgba(245,167,44,0.35)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 4]);
+    ctx.beginPath();
+    ctx.moveTo(diaX - 4, yMaxPx.y);
+    ctx.lineTo(diaX + 4, yMaxPx.y);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(diaX - 4, yMinPx.y);
+    ctx.lineTo(diaX + 4, yMinPx.y);
+    ctx.stroke();
+    ctx.restore();
+
+    // Abanico de rayos monocromáticos (múltiples alturas, color amarillo)
+    const N_RAYOS = 9;
+    const xObjNorm = -0.85;
+    const lente = { f };
+
+    // Calcular foco paraxial (thin-lens con objeto muy lejano → s≈∞ → f' ≈ f)
+    const focoParaxial = f;   // para objeto en el infinito: f' = f
+
+    // Trazar abanico usando imaging.ts
+    const trayectorias = trazarAbanico(0, xObjNorm, lente, N_RAYOS, yMax, 0.90);
+
+    // Calcular foco marginal: intersección de los rayos más externos con el eje
+    // El rayo más externo: desde (xObjNorm, 0) a través de yElem=yMax en x=0
+    // Ángulo de salida thin-lens: theta_sal = theta_inc - yElem/f
+    // Para objeto en el infinito: theta_inc ≈ 0 → theta_sal = -yMax/f
+    // El rayo cruza y=0 en x = yMax / (yMax/f) = f
+    // Para thin-lens exacto, el foco marginal = f también. Añadimos aberración simulada.
+    // Simulamos: el rayo marginal se desvía como una lente "gruesa" → foco en 0.92*f
+    const focoMarginal = f * (1 - 0.08 * aperturaActual * aperturaActual);
+
+    // Dibujar rayos con color según altura (amarillo paraxial, naranja marginal)
+    trayectorias.forEach((tray, i) => {
+      if (tray.puntos.length < 2) return;
+      const fractura = Math.abs(i - (N_RAYOS - 1) / 2) / ((N_RAYOS - 1) / 2);
+      // fractura=0 → paraxial (azul-blanco), fractura=1 → marginal (naranja)
+      const r = Math.round(239 + fractura * 6);
+      const g = Math.round(231 - fractura * 110);
+      const b = Math.round(216 - fractura * 160);
+      const color = `rgba(${r},${g},${b},0.75)`;
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.2;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      tray.puntos.forEach((pt, j) => {
+        const px = this.normToPx(pt.x, pt.y);
+        if (j === 0) ctx.moveTo(px.x, px.y);
+        else ctx.lineTo(px.x, px.y);
+      });
+      ctx.stroke();
+      ctx.restore();
+    });
+
+    // Foco paraxial: marcador azul-blanco
+    const fpPx = this.normToPx(focoParaxial, 0);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(56,189,248,0.9)';
+    ctx.fillStyle = 'rgba(56,189,248,0.3)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.arc(fpPx.x, fpPx.y, 6, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fill();
+    ctx.fillStyle = 'rgba(56,189,248,0.7)';
+    ctx.font = '11px var(--font-mono, monospace)';
+    ctx.fillText('F (paraxial)', fpPx.x + 8, fpPx.y - 8);
+    ctx.restore();
+
+    // Foco marginal: marcador naranja
+    const fmPx = this.normToPx(focoMarginal, 0);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(245,120,44,0.9)';
+    ctx.fillStyle = 'rgba(245,120,44,0.3)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(fmPx.x, fmPx.y, 6, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fill();
+    ctx.fillStyle = 'rgba(245,120,44,0.7)';
+    ctx.font = '11px var(--font-mono, monospace)';
+    ctx.fillText('F\' (marginal)', fmPx.x + 8, fmPx.y + 16);
+    ctx.restore();
+
+    // Mancha de desenfoque en el foco paraxial (círculo de confusión)
+    const manchaR = Math.max(1, yMax * this.CX * 0.4 * aperturaActual);
+    ctx.save();
+    ctx.globalAlpha = 0.25 * aperturaActual;
+    const grad = ctx.createRadialGradient(fpPx.x, fpPx.y, 0, fpPx.x, fpPx.y, manchaR);
+    grad.addColorStop(0, 'rgba(245,231,180,0.9)');
+    grad.addColorStop(1, 'rgba(245,231,180,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(fpPx.x, fpPx.y, manchaR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Aberración cromática: 3 rayos de distinta λ (paralelos al eje)
+    const lambdas = [450, 550, 650];
+    const n_ref = nSellmeier('BK7', 550);
+    lambdas.forEach(lambda => {
+      const n = nSellmeier('BK7', lambda);
+      // f(lambda) ≈ f_ref * n_ref/n (modelo simplificado de lensmaker)
+      const fLambda = f * n_ref / n;
+      const focoPx = this.normToPx(fLambda, 0);
+      const [r, g, b] = wavelengthToSRGB(lambda);
+      const color = `rgba(${Math.round(r*255)},${Math.round(g*255)},${Math.round(b*255)},0.8)`;
+
+      // Rayo paralelo al eje a altura yMax/2
+      const yRayo = yMax * 0.5;
+      const entradaPx = this.normToPx(-0.20, yRayo);
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 4;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(this.normToPx(-0.85, yRayo).x, this.normToPx(-0.85, yRayo).y);
+      ctx.lineTo(entradaPx.x, entradaPx.y);
+      // Tras la lente: rayo desde (0, yRayo) con ángulo -yRayo/fLambda
+      const thetaSal = -yRayo / fLambda;
+      const xFin = 0.85;
+      const yFin = yRayo + xFin * Math.tan(thetaSal);
+      const salidaLentePx = this.normToPx(0, yRayo);
+      const finPx = this.normToPx(xFin, yFin);
+      ctx.moveTo(salidaLentePx.x, salidaLentePx.y);
+      ctx.lineTo(finPx.x, finPx.y);
+      ctx.stroke();
+      // Marcador de foco cromático
+      ctx.fillStyle = color;
+      ctx.shadowBlur = 6;
+      ctx.beginPath();
+      ctx.arc(focoPx.x, focoPx.y, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    });
+
+    // Indicador de apertura cerrada
+    if (aperturaActual < 0.3) {
+      const pos = this.normToPx(0.3, 0.6);
+      ctx.save();
+      ctx.fillStyle = DOMAIN_COLORS.beam;
+      ctx.font = '12px var(--font-mono, monospace)';
+      ctx.textAlign = 'center';
+      ctx.fillText('diafragma cerrado ✓', pos.x, pos.y);
+      ctx.restore();
+    }
+
+    // Instrucción de arrastre
+    ctx.save();
+    ctx.fillStyle = 'rgba(239,231,216,0.35)';
+    ctx.font = '11px var(--font-mono, monospace)';
+    ctx.textAlign = 'center';
+    ctx.fillText('↕ arrastra para ajustar apertura', this.normToPx(0, -0.85).x, this.normToPx(0, -0.85).y);
+    ctx.restore();
+  }
+
+  // ── Instrumentos ópticos (dos lentes, afocal) ───────────────────────────
+
+  /**
+   * Dibuja el banco de instrumentos:
+   * - Dos lentes (objetivo + ocular) sobre el eje
+   * - Rayos paralelos entrantes (objeto en el infinito)
+   * - La primera lente (objetivo) los hace converger en su foco
+   * - El ocular los recoge y los emite paralelos si d = f1+f2
+   * - Indicador de configuración afocal
+   * - HUD: separación d, f1+f2, aumento angular M
+   */
+  private drawInstrumentos(): void {
+    const ctx = this.ctx;
+
+    // Fondo oscuro
+    ctx.save();
+    ctx.fillStyle = '#0d0c0a';
+    ctx.fillRect(0, 0, this.W, this.H);
+    ctx.restore();
+
+    this.drawEjeOptico();
+
+    const f1 = this.instrumentosF1;    // focal objetivo
+    const f2 = this.instrumentosF2;    // focal ocular
+    const d  = this.instrumentosSeparacion;  // separación entre las lentes
+
+    // Posiciones de las lentes en el banco (en coordenadas norm)
+    const xL1 = -0.20;    // lente 1 (objetivo) fija
+    const xL2 = xL1 + d;  // lente 2 (ocular) móvil
+
+    // Altura de los rayos entrantes (paralelos al eje)
+    const yAlturas = [-0.18, -0.09, 0, 0.09, 0.18];
+
+    // Dibujar lente 1 (objetivo)
+    this.drawLenteSimbolo(xL1, 'rgba(56,189,248,0.7)', 'rgba(56,189,248,0.06)');
+    // Focos de L1
+    const fL1Px = this.normToPx(xL1 + f1, 0);
+    ctx.save();
+    ctx.fillStyle = 'rgba(245,167,44,0.6)';
+    ctx.beginPath();
+    ctx.arc(fL1Px.x, fL1Px.y, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(245,167,44,0.5)';
+    ctx.font = '10px var(--font-mono, monospace)';
+    ctx.fillText('F₁', fL1Px.x + 5, fL1Px.y - 5);
+    ctx.restore();
+
+    // Dibujar lente 2 (ocular) — solo si cabe en el canvas
+    if (xL2 < 0.88) {
+      this.drawLenteSimbolo(xL2, 'rgba(154,138,118,0.7)', 'rgba(154,138,118,0.06)');
+      // Focos de L2
+      const fL2antPx = this.normToPx(xL2 - f2, 0);
+      ctx.save();
+      ctx.fillStyle = 'rgba(154,138,118,0.6)';
+      ctx.beginPath();
+      ctx.arc(fL2antPx.x, fL2antPx.y, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(154,138,118,0.5)';
+      ctx.font = '10px var(--font-mono, monospace)';
+      ctx.fillText('F₂', fL2antPx.x + 5, fL2antPx.y - 5);
+      ctx.restore();
+    }
+
+    // Trazar rayos por las dos lentes
+    yAlturas.forEach(y0 => {
+      const fractura = Math.abs(y0) / 0.18;
+      const alpha = 0.55 + fractura * 0.35;
+      const color = `rgba(245,167,44,${alpha.toFixed(2)})`;
+
+      // Segmento 1: entrada → lente 1
+      const entPx = this.normToPx(-0.88, y0);
+      const enL1Px = this.normToPx(xL1, y0);
+      this.drawRaySegment(ctx, entPx, enL1Px, color, 1.3, alpha * 0.8);
+
+      // Tras L1: thin-lens → theta1 = -y0/f1
+      const theta1 = -y0 / f1;
+
+      // Punto en lente 2
+      const dy_a_L2 = d * Math.tan(theta1);
+      const yEnL2 = y0 + dy_a_L2;
+      const enL2Px = this.normToPx(xL2, yEnL2);
+      this.drawRaySegment(ctx, enL1Px, enL2Px, color, 1.3, alpha * 0.8);
+
+      // Tras L2: thin-lens → theta2 = theta1 - yEnL2/f2
+      if (xL2 < 0.88) {
+        const theta2 = theta1 - yEnL2 / f2;
+        const xFin = 0.88;
+        const yFin = yEnL2 + (xFin - xL2) * Math.tan(theta2);
+        const finPx = this.normToPx(xFin, yFin);
+        // Color del rayo saliente: naranja si no afocal, verde si afocal
+        const afocal = Math.abs(d - (f1 + f2)) / (f1 + f2) < 0.05;
+        const colorSalida = afocal ? 'rgba(80,220,120,0.85)' : color;
+        this.drawRaySegment(ctx, enL2Px, finPx, colorSalida, 1.3, alpha * 0.8);
+      }
+    });
+
+    // Indicador de afocal
+    const afocalActual = Math.abs(d - (f1 + f2)) / (f1 + f2) < 0.05;
+    if (afocalActual) {
+      const pos = this.normToPx(0.5, 0.65);
+      ctx.save();
+      ctx.fillStyle = 'rgba(80,220,120,0.9)';
+      ctx.shadowColor = 'rgba(80,220,120,0.5)';
+      ctx.shadowBlur = 10;
+      ctx.font = '13px var(--font-mono, monospace)';
+      ctx.textAlign = 'center';
+      ctx.fillText('Afocal ✓  d = f₁ + f₂', pos.x, pos.y);
+      ctx.restore();
+    }
+
+    // Etiqueta de separación d
+    const midX = (xL1 + xL2) / 2;
+    const dPx1 = this.normToPx(xL1, -0.72);
+    const dPx2 = this.normToPx(xL2, -0.72);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(154,138,118,0.4)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 4]);
+    ctx.beginPath();
+    ctx.moveTo(dPx1.x, dPx1.y);
+    ctx.lineTo(dPx2.x, dPx2.y);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(154,138,118,0.6)';
+    ctx.font = '10px var(--font-mono, monospace)';
+    ctx.textAlign = 'center';
+    ctx.setLineDash([]);
+    ctx.fillText(`d = ${d.toFixed(2)}`, this.normToPx(midX, -0.78).x, this.normToPx(midX, -0.78).y);
+    ctx.restore();
+
+    // Instrucción de arrastre
+    ctx.save();
+    ctx.fillStyle = 'rgba(239,231,216,0.35)';
+    ctx.font = '11px var(--font-mono, monospace)';
+    ctx.textAlign = 'center';
+    ctx.fillText('↔ arrastra para ajustar separación', this.normToPx(0, -0.90).x, this.normToPx(0, -0.90).y);
+    ctx.restore();
+  }
+
+  /** Dibuja el símbolo de una lente biconvexa centrada en xNorm */
+  private drawLenteSimbolo(xNorm: number, stroke: string, fill: string): void {
+    const ctx = this.ctx;
+    const lentePx = this.normToPx(xNorm, 0);
+    const lH = this.CY * 0.55;
+    const lW = 12;
+    ctx.save();
+    ctx.strokeStyle = stroke;
+    ctx.fillStyle = fill;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(lentePx.x, lentePx.y - lH);
+    ctx.bezierCurveTo(lentePx.x - lW, lentePx.y - lH * 0.5, lentePx.x - lW, lentePx.y + lH * 0.5, lentePx.x, lentePx.y + lH);
+    ctx.bezierCurveTo(lentePx.x + lW, lentePx.y + lH * 0.5, lentePx.x + lW, lentePx.y - lH * 0.5, lentePx.x, lentePx.y - lH);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
   // ── Loop de animación ────────────────────────────────────────────────────
 
   private loop(): void {
@@ -1169,6 +1609,10 @@ export class Bench {
       this.dragTarget = 'pinhole-obj';
     } else if (this.lentesMode) {
       this.dragTarget = 'pinhole-obj';   // reuse: moves lentesObjX horizontally
+    } else if (this.aberracionesMode) {
+      this.dragTarget = 'ray';           // arrastrar Y para cambiar apertura
+    } else if (this.instrumentosMode) {
+      this.dragTarget = 'ray';           // arrastrar X para cambiar separación
     } else if (this.fermatMode) {
       this.dragTarget = 'fermat';
     } else {
@@ -1218,6 +1662,22 @@ export class Bench {
     const norm = this.pxToNorm(px.x, px.y);
 
     if (this.dragTarget === 'ray') {
+      if (this.aberracionesMode) {
+        // Arrastrar verticalmente para cambiar la apertura (0..1)
+        // norm.y va de -1 (abajo) a 1 (arriba): mapear a apertura 0..1
+        const ap = Math.max(0.02, Math.min(1.0, (norm.y + 1) / 2));
+        this.apertura = ap;
+        if (this.config.onAperturaChange) this.config.onAperturaChange(ap);
+        return;
+      }
+      if (this.instrumentosMode) {
+        // Arrastrar horizontalmente para cambiar la separación
+        // norm.x en [-1,1]: mapear a separación 0.05..0.90
+        const sep = Math.max(0.05, Math.min(0.90, norm.x + 0.8));
+        this.instrumentosSeparacion = sep;
+        if (this.config.onSeparacionChange) this.config.onSeparacionChange(sep);
+        return;
+      }
       // El ángulo se calcula desde la fuente al puntero del ratón
       const srcPx = this.normToPx(this.SOURCE_X_NORM, this.SOURCE_Y_NORM);
       const dx = px.x - srcPx.x;
@@ -1274,6 +1734,36 @@ export class Bench {
     const desviacionDeg = isNaN(D) ? 0 : (D * 180) / Math.PI;
     // λ dominante: usamos 550 nm (verde) como referencia; en la desviación mínima más limpio
     return { desviacionDeg, lambdaDominante: 550 };
+  }
+
+  /** Retorna el estado del banco de aberraciones para el HUD */
+  getAberracionesState(): { lsa: number; lca: number; apertura: number } {
+    const f = this.aberracionesF;
+    const yMax = this.aperturaMax * this.apertura;
+    const lente = { f };
+    // LSA: aberración esférica longitudinal
+    const resEsf = aberracionEsferica(lente, 10.0, Math.max(0.001, yMax), 7);
+    const lsa = resEsf.longitudinal;
+    // LCA: diferencia de foco azul (450 nm) vs rojo (650 nm)
+    // Usamos BK7 con ecuación de fabricante simplificada: f(n) = f_ref * n_ref / n
+    const n_ref = nSellmeier('BK7', 550);
+    const resCrom = aberracionCromatica(
+      (n: number) => f * n_ref / n,
+      'BK7',
+      10.0,
+      [450, 650]
+    );
+    const lca = resCrom.length >= 2
+      ? (resCrom[0]!.foco - resCrom[1]!.foco)
+      : 0;
+    return { lsa, lca, apertura: this.apertura };
+  }
+
+  /** Retorna el estado del banco de instrumentos para el HUD */
+  getInstrumentosState(): { separacion: number; afocal: number; aumento: number } {
+    const afocal = this.instrumentosF1 + this.instrumentosF2;
+    const aumento = -(this.instrumentosF1 / this.instrumentosF2);
+    return { separacion: this.instrumentosSeparacion, afocal, aumento };
   }
 
   /** Limpia recursos */

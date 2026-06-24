@@ -16,7 +16,7 @@ import { getCapitulo } from './content/chapters';
 import { marcarCompletado, desbloquearHerramienta, loadProgress } from './services/persistence';
 import { fade } from './cinematics';
 import { t } from './ui/i18n';
-import type { ObjetivoReflexionBlanco, ObjetivoLentes } from './content/chapters/types';
+import type { ObjetivoReflexionBlanco, ObjetivoLentes, ObjetivoAberraciones, ObjetivoInstrumentos } from './content/chapters/types';
 import { trazarRayos } from './core/content/optics';
 import type { EscenaOptica } from './core/content/optics';
 import { desviacionMinima, nSellmeier, prismaDesviacion } from './core/dispersion';
@@ -34,6 +34,10 @@ interface AppState {
   pinholeObjX: number;
   /** Posición x normalizada del objeto en modo lentes */
   lentesObjX: number;
+  /** Apertura actual en modo aberraciones (0..1) */
+  apertura: number;
+  /** Separación entre las dos lentes en modo instrumentos */
+  instrumentosSeparacion: number;
 }
 
 const STATE: AppState = {
@@ -46,6 +50,8 @@ const STATE: AppState = {
   capituloActualId: 'refraccion',
   pinholeObjX: -0.55,
   lentesObjX: -0.60,
+  apertura: 1.0,
+  instrumentosSeparacion: 0.40,
 };
 
 let appContainer: HTMLElement;
@@ -136,6 +142,8 @@ function irAlBanco(capituloId: string): void {
   const esReflexionBlanco = objetivo?.tipo === 'reflexion-blanco';
   const esDispersion = objetivo?.tipo === 'dispersion';
   const esLentes = objetivo?.tipo === 'lentes';
+  const esAberraciones = objetivo?.tipo === 'aberraciones';
+  const esInstrumentos = objetivo?.tipo === 'instrumentos';
 
   // Banco Canvas2D con EscenaOptica del capítulo
   const benchConfig = {
@@ -162,6 +170,40 @@ function irAlBanco(capituloId: string): void {
       lentesF: objetivo.f,
       lentesObjX: STATE.lentesObjX,
     } : {}),
+    // Modo aberraciones
+    ...(esAberraciones && objetivo?.tipo === 'aberraciones' ? {
+      aberracionesMode: true,
+      aberracionesF: 0.30,
+      apertura: STATE.apertura,
+      aperturaMax: objetivo.aperturaMax,
+    } : {}),
+    // Modo instrumentos
+    ...(esInstrumentos && objetivo?.tipo === 'instrumentos' ? {
+      instrumentosMode: true,
+      instrumentosF1: objetivo.f1,
+      instrumentosF2: objetivo.f2,
+      instrumentosSeparacion: STATE.instrumentosSeparacion,
+    } : {}),
+    onAperturaChange(ap: number) {
+      STATE.apertura = ap;
+      actualizarHUD(capituloId);
+      // Verificar objetivo aberraciones
+      if (esAberraciones && objetivo?.tipo === 'aberraciones') {
+        if (verificarObjetivoAberraciones(ap, objetivo)) {
+          manejarDesbloqueo(capituloId);
+        }
+      }
+    },
+    onSeparacionChange(sep: number) {
+      STATE.instrumentosSeparacion = sep;
+      actualizarHUD(capituloId);
+      // Verificar objetivo instrumentos
+      if (esInstrumentos && objetivo?.tipo === 'instrumentos') {
+        if (verificarObjetivoInstrumentos(sep, objetivo)) {
+          manejarDesbloqueo(capituloId);
+        }
+      }
+    },
     onAngleChange(theta: number) {
       STATE.thetaInc = theta;
       actualizarHUD(capituloId);
@@ -240,6 +282,10 @@ function irAlBanco(capituloId: string): void {
     montarPanelDispersion(capituloId);
   } else if (esLentes && objetivo?.tipo === 'lentes') {
     montarPanelLentes(capituloId, objetivo);
+  } else if (esAberraciones && objetivo?.tipo === 'aberraciones') {
+    montarPanelAberraciones(capituloId, objetivo);
+  } else if (esInstrumentos && objetivo?.tipo === 'instrumentos') {
+    montarPanelInstrumentos(capituloId, objetivo);
   }
 }
 
@@ -357,6 +403,36 @@ function calcularHUDState(capituloId?: string) {
     return base;
   }
 
+  if (mode === 'aberraciones') {
+    const abState = bench?.getAberracionesState?.();
+    return {
+      n1: 1.0,
+      n2: 1.0,
+      theta1Deg: 0,
+      theta2Deg: 0,
+      tir: false,
+      mode: 'aberraciones' as const,
+      aberracionLSA: abState?.lsa ?? 0,
+      aberracionLCA: abState?.lca ?? 0,
+      apertura: abState?.apertura ?? STATE.apertura,
+    };
+  }
+
+  if (mode === 'instrumentos') {
+    const instState = bench?.getInstrumentosState?.();
+    return {
+      n1: 1.0,
+      n2: 1.0,
+      theta1Deg: 0,
+      theta2Deg: 0,
+      tir: false,
+      mode: 'instrumentos' as const,
+      instrumentosSeparacion: instState?.separacion ?? STATE.instrumentosSeparacion,
+      instrumentosAfocal: instState?.afocal ?? 0,
+      instrumentosAumento: instState?.aumento ?? 0,
+    };
+  }
+
   const r = refract(STATE.n1, STATE.n2, STATE.thetaInc);
   return {
     n1: STATE.n1,
@@ -433,6 +509,12 @@ function manejarDesbloqueo(capituloId: string): void {
   } else if (tipo === 'lentes') {
     desbloquearHerramienta('lente');
     mostrarBannerDesbloqueo('desbloqueo.lente', 'desbloqueo.lente.descripcion');
+  } else if (tipo === 'aberraciones') {
+    desbloquearHerramienta('diafragma');
+    mostrarBannerDesbloqueo('desbloqueo.diafragma', 'desbloqueo.diafragma.descripcion');
+  } else if (tipo === 'instrumentos') {
+    desbloquearHerramienta('sistema-multi-elemento');
+    mostrarBannerDesbloqueo('desbloqueo.sistema-multi-elemento', 'desbloqueo.sistema-multi-elemento.descripcion');
   } else {
     mostrarBannerDesbloqueo('desbloqueo.interfaz', 'desbloqueo.descripcion');
   }
@@ -503,6 +585,14 @@ function verificarDispersionMinima(theta: number, toleranciaGrados: number): boo
 
 let lentesPanel: HTMLElement | null = null;
 
+// ── Panel aberraciones ────────────────────────────────────────────────────────
+
+let aberracionesPanel: HTMLElement | null = null;
+
+// ── Panel instrumentos ────────────────────────────────────────────────────────
+
+let instrumentosPanel: HTMLElement | null = null;
+
 function montarPanelLentes(capituloId: string, _obj: ObjetivoLentes): void {
   const panel = document.createElement('div');
   panel.className = 'pinhole-panel';
@@ -530,6 +620,65 @@ function verificarObjetivoLentes(objX: number, obj: ObjetivoLentes): boolean {
   return Math.abs(s - dos_f) / dos_f < obj.tolerancia;
 }
 
+function montarPanelAberraciones(capituloId: string, _obj: ObjetivoAberraciones): void {
+  const panel = document.createElement('div');
+  panel.className = 'pinhole-panel';
+  panel.setAttribute('role', 'complementary');
+
+  panel.innerHTML = `
+    <div class="pinhole-panel__label">${t('aberraciones.bench.objetivo')}</div>
+    <button id="btn-aberraciones-ok" class="pinhole-panel__btn">
+      ${t('aberraciones.bench.completar')}
+    </button>
+  `;
+
+  appContainer.appendChild(panel);
+  aberracionesPanel = panel;
+
+  panel.querySelector('#btn-aberraciones-ok')?.addEventListener('click', () => {
+    manejarDesbloqueo(capituloId);
+  });
+}
+
+/** Verifica si la apertura está suficientemente cerrada (objetivo aberraciones) */
+function verificarObjetivoAberraciones(apertura: number, _obj: ObjetivoAberraciones): boolean {
+  // El objetivo se cumple cuando la apertura es menor al 25 %
+  return apertura < 0.25;
+}
+
+function montarPanelInstrumentos(capituloId: string, obj: ObjetivoInstrumentos): void {
+  const panel = document.createElement('div');
+  panel.className = 'pinhole-panel';
+  panel.setAttribute('role', 'complementary');
+
+  panel.innerHTML = `
+    <div class="pinhole-panel__label">${t('instrumentos.bench.objetivo.instruccion')}</div>
+    <button id="btn-instrumentos-ok" class="pinhole-panel__btn">
+      ${t('instrumentos.bench.completar')}
+    </button>
+  `;
+
+  appContainer.appendChild(panel);
+  instrumentosPanel = panel;
+
+  panel.querySelector('#btn-instrumentos-ok')?.addEventListener('click', () => {
+    // Verificar que la separación esté cerca de f1+f2 antes de aceptar
+    const afocal = obj.f1 + obj.f2;
+    const sep = STATE.instrumentosSeparacion;
+    if (Math.abs(sep - afocal) / afocal < obj.tolerancia * 2) {
+      manejarDesbloqueo(capituloId);
+    } else {
+      manejarDesbloqueo(capituloId); // aceptar de todas formas al pulsar el botón
+    }
+  });
+}
+
+/** Verifica si la separación es afocal (objetivo instrumentos) */
+function verificarObjetivoInstrumentos(sep: number, obj: ObjetivoInstrumentos): boolean {
+  const afocal = obj.f1 + obj.f2;
+  return Math.abs(sep - afocal) / afocal < obj.tolerancia;
+}
+
 // ── Utilidades ───────────────────────────────────────────────────────────────
 
 function limpiarPantalla(): void {
@@ -544,11 +693,17 @@ function limpiarPantalla(): void {
   reflexionPanel = null;
   dispersionPanel = null;
   lentesPanel = null;
+  aberracionesPanel = null;
+  instrumentosPanel = null;
   pinholeInteractuado = false;
 
   // Limpiar DOM (excepto el appContainer)
   while (appContainer.firstChild) {
     appContainer.removeChild(appContainer.firstChild);
   }
+  // Guardia extra: eliminar cualquier HUD huérfano que haya quedado en el documento
+  // (position: fixed no lo quita el vaciado de appContainer si el nodo fue movido)
+  document.querySelectorAll('.hud').forEach(el => el.remove());
+
   desbloqueadoYa = false;
 }

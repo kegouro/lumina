@@ -71,6 +71,26 @@ export interface ObjetivoLentes {
   tolerancia: number;
 }
 
+/** Objetivo tipo aberraciones: minimizar aberración cerrando el diafragma */
+export interface ObjetivoAberraciones {
+  tipo: 'aberraciones';
+  /** Apertura máxima normalizada (yMax) */
+  aperturaMax: number;
+  /** Umbral de aberración longitudinal (en unidades norm) por debajo del cual se cumple */
+  umbralAberracion: number;
+}
+
+/** Objetivo tipo instrumentos: lograr configuración afocal (separación ≈ f₁+f₂) */
+export interface ObjetivoInstrumentos {
+  tipo: 'instrumentos';
+  /** Focal de la lente objetivo (unidades norm) */
+  f1: number;
+  /** Focal del ocular (unidades norm) */
+  f2: number;
+  /** Tolerancia relativa para considerar configuración afocal */
+  tolerancia: number;
+}
+
 /** Unión de objetivos posibles (extensible con nuevos tipos) */
 export type Objetivo =
   | ObjetivoFermat
@@ -78,7 +98,9 @@ export type Objetivo =
   | ObjetivoReflexionBlanco
   | ObjetivoFermatReflexion
   | ObjetivoDispersion
-  | ObjetivoLentes;
+  | ObjetivoLentes
+  | ObjetivoAberraciones
+  | ObjetivoInstrumentos;
 
 /** Descripción completa de un capítulo */
 export interface Capitulo {

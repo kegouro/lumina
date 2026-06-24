@@ -180,4 +180,53 @@ export const en: Record<keyof typeof es, string> = {
   // Lenses unlock
   'desbloqueo.lente': 'Tool unlocked: Thin lens!',
   'desbloqueo.lente.descripcion': 'You can now add converging and diverging lenses in the free lab.',
+
+  // Aberrations — cinematic scene
+  'aberraciones.frase': 'The perfect lens does not exist. The real world blurs.',
+  'aberraciones.titulo': 'Aberrations',
+  'aberraciones.intuicion': 'A real lens does not converge all rays to a single point. Marginal rays (high aperture) focus closer than paraxial ones: spherical aberration. And each colour focuses at a different point: chromatic aberration. Closing the aperture stop removes marginal rays and shrinks the blur spot.',
+  'aberraciones.deduccion.titulo': 'Spherical and chromatic aberration',
+  'aberraciones.deduccion.texto': 'LSA = f_marginal − f_paraxial  |  LCA = f_blue − f_red',
+  'aberraciones.deduccion.derivacion': 'Longitudinal spherical aberration (LSA) measures how far the marginal focus shifts from the paraxial one. For a simple lens it vanishes only with an infinitely small aperture. Longitudinal chromatic aberration (LCA) arises from n(λ): blue (small λ, larger n) focuses closer. Achromatic doublets equalise f_blue ≈ f_red by combining two materials with different Abbe numbers.',
+  'aberraciones.deduccion.ver': 'Show aberration',
+  'aberraciones.deduccion.ocultar': 'Hide derivation',
+  'aberraciones.comenzar': 'Explore the bench',
+
+  // Aberrations — bench
+  'aberraciones.bench.instruccion': 'Drag to adjust the aperture stop',
+  'aberraciones.bench.apertura': 'Aperture',
+  'aberraciones.bench.lsa': 'LSA (spherical)',
+  'aberraciones.bench.lca': 'LCA (chromatic)',
+  'aberraciones.bench.objetivo': 'Close the aperture to reduce spherical aberration',
+  'aberraciones.bench.completar': 'Aberration minimised! The aperture stop is the solution.',
+  'aberraciones.bench.focoParaxial': 'Paraxial focus',
+  'aberraciones.bench.focoMarginal': 'Marginal focus',
+
+  // Aberrations unlock
+  'desbloqueo.diafragma': 'Tool unlocked: Aperture stop!',
+  'desbloqueo.diafragma.descripcion': 'You can now add aperture stops to control the aperture in the free lab.',
+
+  // Optical instruments — cinematic scene
+  'instrumentos.frase': 'Two lenses and infinity fits in your eye.',
+  'instrumentos.titulo': 'Optical instruments',
+  'instrumentos.intuicion': 'A refracting telescope uses two lenses: the objective (long focal) forms a real image of the distant object at its focal plane; the eyepiece (short focal) acts as a magnifier of that image. When the separation d = f₁ + f₂ (afocal setup), rays emerge parallel and the angular magnification is M = −f₁/f₂. The magnifying glass and microscope share the same intermediate-image principle.',
+  'instrumentos.deduccion.titulo': 'Angular magnification of the telescope',
+  'instrumentos.deduccion.texto': 'M = −f₁/f₂   (afocal: d = f₁ + f₂)',
+  'instrumentos.deduccion.derivacion': 'The objective forms the image of the distant object at its rear focal plane (x = f₁). The eyepiece is placed at distance f₂ from that image. With d = f₁ + f₂ the final image is at infinity: rays emerge parallel. The exit angle is M times the entrance angle (M negative = inverted image). The magnifying glass amplifies with a single lens (M ≈ 25/f cm); the microscope uses two lenses with a real intermediate image between them.',
+  'instrumentos.deduccion.ver': 'Show the telescope',
+  'instrumentos.deduccion.ocultar': 'Hide derivation',
+  'instrumentos.comenzar': 'Build the telescope',
+
+  // Instruments — bench
+  'instrumentos.bench.instruccion': 'Drag to adjust the separation between lenses',
+  'instrumentos.bench.separacion': 'Separation d',
+  'instrumentos.bench.f1f2': 'f₁ + f₂',
+  'instrumentos.bench.aumento': 'Angular magnification M',
+  'instrumentos.bench.objetivo.instruccion': 'Adjust the separation until d ≈ f₁ + f₂ (afocal setup)',
+  'instrumentos.bench.completar': 'Afocal telescope! Rays emerge parallel.',
+  'instrumentos.bench.afocal': 'Afocal ✓',
+
+  // Instruments unlock
+  'desbloqueo.sistema-multi-elemento': 'Tool unlocked: Multi-element system!',
+  'desbloqueo.sistema-multi-elemento.descripcion': 'You can now combine multiple lenses and mirrors in the free lab.',
 };

@@ -71,6 +71,7 @@ export const CONCEPTOS: Concepto[] = [
     ordenPedagogico: 7,
     fechaHistorica: 1856,
     prereqs: ['lentes'],
+    herramienta: 'diafragma',
   },
   {
     id: 'instrumentos',

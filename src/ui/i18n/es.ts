@@ -177,4 +177,53 @@ export const es = {
   // Desbloqueo lentes
   'desbloqueo.lente': '¡Herramienta desbloqueada: Lente delgada!',
   'desbloqueo.lente.descripcion': 'Ahora puedes añadir lentes convergentes y divergentes en el banco libre.',
+
+  // Aberraciones — escena cinematográfica
+  'aberraciones.frase': 'La lente ideal no existe. El mundo real difumina.',
+  'aberraciones.titulo': 'Aberraciones',
+  'aberraciones.intuicion': 'Una lente real no converge todos los rayos en un único punto. Los rayos marginales (altura elevada) se enfocan más cerca que los paraxiales: aberración esférica. Y cada color enfoca en un punto distinto: aberración cromática. Cerrar el diafragma elimina los rayos marginales y reduce la mancha.',
+  'aberraciones.deduccion.titulo': 'Aberración esférica y cromática',
+  'aberraciones.deduccion.texto': 'LSA = f_marginal − f_paraxial  |  LCA = f_azul − f_rojo',
+  'aberraciones.deduccion.derivacion': 'La aberración esférica longitudinal (LSA) mide cuánto se desplaza el foco marginal respecto al paraxial. Para una lente simple converge a cero solo con un diafragma infinitamente pequeño. La aberración cromática longitudinal (LCA) viene de n(λ): el azul (λ pequeña, n mayor) enfoca más cerca. Los dobletes acromáticos igualan f_azul ≈ f_rojo usando dos materiales de distinto número de Abbe.',
+  'aberraciones.deduccion.ver': 'Ver la aberración',
+  'aberraciones.deduccion.ocultar': 'Ocultar deducción',
+  'aberraciones.comenzar': 'Explorar el banco',
+
+  // Aberraciones — banco
+  'aberraciones.bench.instruccion': 'Arrastra para ajustar la apertura del diafragma',
+  'aberraciones.bench.apertura': 'Apertura',
+  'aberraciones.bench.lsa': 'LSA (esférica)',
+  'aberraciones.bench.lca': 'LCA (cromática)',
+  'aberraciones.bench.objetivo': 'Cierra el diafragma para reducir la aberración esférica',
+  'aberraciones.bench.completar': '¡Aberración minimizada! El diafragma es la solución.',
+  'aberraciones.bench.focoParaxial': 'Foco paraxial',
+  'aberraciones.bench.focoMarginal': 'Foco marginal',
+
+  // Desbloqueo aberraciones
+  'desbloqueo.diafragma': '¡Herramienta desbloqueada: Diafragma!',
+  'desbloqueo.diafragma.descripcion': 'Ahora puedes añadir diafragmas para controlar la apertura en el banco libre.',
+
+  // Instrumentos ópticos — escena cinematográfica
+  'instrumentos.frase': 'Dos lentes y el infinito cabe en tu ojo.',
+  'instrumentos.titulo': 'Instrumentos ópticos',
+  'instrumentos.intuicion': 'Un telescopio refractor usa dos lentes: el objetivo (focal larga) forma una imagen real del objeto lejano en su plano focal; el ocular (focal corta) actúa como lupa sobre esa imagen. Cuando la separación d = f₁ + f₂ (configuración afocal), los rayos salen paralelos y el aumento angular es M = −f₁/f₂. La lupa y el microscopio comparten el mismo principio de imagen intermedia.',
+  'instrumentos.deduccion.titulo': 'Aumento angular del telescopio',
+  'instrumentos.deduccion.texto': 'M = −f₁/f₂   (afocal: d = f₁ + f₂)',
+  'instrumentos.deduccion.derivacion': 'El objetivo forma la imagen del objeto lejano en su plano focal posterior (x = f₁). El ocular se coloca a distancia f₂ de esa imagen. Con d = f₁ + f₂ la imagen final está en el infinito: los rayos salen paralelos. El ángulo de salida es M veces el de entrada (M negativo = imagen invertida). La lupa amplía con una sola lente (M ≈ 25/f cm); el microscopio usa dos lentes con imagen intermedia real entre ellas.',
+  'instrumentos.deduccion.ver': 'Ver el telescopio',
+  'instrumentos.deduccion.ocultar': 'Ocultar deducción',
+  'instrumentos.comenzar': 'Construir el telescopio',
+
+  // Instrumentos — banco
+  'instrumentos.bench.instruccion': 'Arrastra para ajustar la separación entre las lentes',
+  'instrumentos.bench.separacion': 'Separación d',
+  'instrumentos.bench.f1f2': 'f₁ + f₂',
+  'instrumentos.bench.aumento': 'Aumento angular M',
+  'instrumentos.bench.objetivo.instruccion': 'Ajusta la separación hasta d ≈ f₁ + f₂ (configuración afocal)',
+  'instrumentos.bench.completar': '¡Telescopio afocal! Los rayos salen paralelos.',
+  'instrumentos.bench.afocal': 'Afocal ✓',
+
+  // Desbloqueo instrumentos
+  'desbloqueo.sistema-multi-elemento': '¡Herramienta desbloqueada: Sistema multi-elemento!',
+  'desbloqueo.sistema-multi-elemento.descripcion': 'Ahora puedes combinar múltiples lentes y espejos en el banco libre.',
 } as const;

@@ -9,6 +9,8 @@ import { capituloRefraccion } from './refraccion';
 import { capituloFermat } from './fermat';
 import { capituloDispersion } from './dispersion';
 import { capituloLentes } from './lentes';
+import { capituloAberraciones } from './aberraciones';
+import { capituloInstrumentos } from './instrumentos';
 
 /** Mapa de capítulos implementados (conceptoId → Capitulo) */
 const CAPITULOS: Map<string, Capitulo> = new Map([
@@ -18,6 +20,8 @@ const CAPITULOS: Map<string, Capitulo> = new Map([
   ['fermat', capituloFermat],
   ['dispersion', capituloDispersion],
   ['lentes', capituloLentes],
+  ['aberraciones', capituloAberraciones],
+  ['instrumentos', capituloInstrumentos],
 ]);
 
 /**
