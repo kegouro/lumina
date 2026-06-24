@@ -1,13 +1,18 @@
-// Banco óptico Canvas2D — capítulo Refracción.
+// Banco óptico Canvas2D — capítulo Refracción (y capítulos posteriores).
 // Dibuja: eje óptico, interfaz vertical, rayo incidente + refractado (Snell exacto),
-// reflexión total interna cuando aplica, punto de cruce P para Fermat.
+// reflexión total interna cuando aplica, punto de cruce P para Fermat,
+// espectro de dispersión del prisma (capítulo dispersión),
+// abanico + imagen de lente (capítulo lentes).
 // Interacción: arrastre del extremo del rayo incidente cambia θ₁.
 // Pulso de propagación: al soltar, el rayo "viaja" desde la fuente.
 
 import { refract, criticalAngle } from '../../core/snell';
-import { DOMAIN_COLORS } from '../../core/colors';
+import { DOMAIN_COLORS, wavelengthToSRGB } from '../../core/colors';
 import type { EscenaOptica } from '../../core/content/optics';
 import { trazarRayos } from '../../core/content/optics';
+import { nSellmeier, prismaDesviacion, desviacionMinima } from '../../core/dispersion';
+import type { MaterialOptico } from '../../core/dispersion';
+import { imagenParaxialLente, trazarAbanico } from '../../core/imaging';
 
 export interface BenchConfig {
   canvas: HTMLCanvasElement;
@@ -27,9 +32,19 @@ export interface BenchConfig {
   blancoY?: number;
   /** Tolerancia normalizada para resaltar el blanco como impactado */
   blancoTolerancia?: number;
+  /** Modo dispersión: dibuja espectro completo del prisma */
+  dispersionMode?: boolean;
+  /** Modo lentes: dibuja abanico de rayos + imagen */
+  lentesMode?: boolean;
+  /** Distancia focal de la lente en unidades norm (solo lentesMode) */
+  lentesF?: number;
+  /** Posición x normalizada del objeto para el modo lentes (arrastrable) */
+  lentesObjX?: number;
   onAngleChange: (theta: number) => void;
   onFermatPChange: (py: number) => void;  // py en coordenadas bench norm [-1, 1]
   onPinholeSizeChange?: (size: number) => void;
+  /** Callback cuando cambia la posición del objeto en modo lentes */
+  onLentesObjChange?: (objX: number) => void;
 }
 
 // ── Funciones puras exportadas (testeables sin DOM) ──────────────────────────
@@ -112,6 +127,14 @@ export class Bench {
   private blancoTolerancia: number = 0.08;    // tolerancia para el highlight
   private blancoImpactado: boolean = false;   // ¿el rayo pasa por el blanco?
 
+  // Dispersión
+  private dispersionMode: boolean = false;
+
+  // Lentes
+  private lentesMode: boolean = false;
+  private lentesF: number = 0.30;
+  private lentesObjX: number = -0.60;   // posición x del objeto arrastrable
+
   // Geometría del bench en píxeles (se recalcula en resize)
   private W = 0;
   private H = 0;
@@ -139,6 +162,10 @@ export class Bench {
     if (config.objetoX !== undefined) this.objetoX = config.objetoX;
     if (config.blancoY !== undefined) this.blancoY = config.blancoY;
     if (config.blancoTolerancia !== undefined) this.blancoTolerancia = config.blancoTolerancia;
+    if (config.dispersionMode !== undefined) this.dispersionMode = config.dispersionMode;
+    if (config.lentesMode !== undefined) this.lentesMode = config.lentesMode;
+    if (config.lentesF !== undefined) this.lentesF = config.lentesF;
+    if (config.lentesObjX !== undefined) this.lentesObjX = config.lentesObjX;
 
     const ctx = this.canvas.getContext('2d');
     if (!ctx) throw new Error('No se pudo obtener el contexto 2D del canvas');
@@ -161,6 +188,10 @@ export class Bench {
     if (s.objetoX !== undefined) this.objetoX = s.objetoX;
     if (s.blancoY !== undefined) this.blancoY = s.blancoY;
     if (s.blancoTolerancia !== undefined) this.blancoTolerancia = s.blancoTolerancia;
+    if (s.dispersionMode !== undefined) this.dispersionMode = s.dispersionMode;
+    if (s.lentesMode !== undefined) this.lentesMode = s.lentesMode;
+    if (s.lentesF !== undefined) this.lentesF = s.lentesF;
+    if (s.lentesObjX !== undefined) this.lentesObjX = s.lentesObjX;
     this.triggerPulse();
   }
 
@@ -220,6 +251,16 @@ export class Bench {
     if (this.pinholeMode) {
       // La cámara oscura tiene su propio fondo y no usa medios/interfaz
       this.drawPinhole();
+      return;
+    }
+
+    if (this.dispersionMode) {
+      this.drawDispersion();
+      return;
+    }
+
+    if (this.lentesMode) {
+      this.drawLentes();
       return;
     }
 
@@ -777,6 +818,312 @@ export class Bench {
     ctx.restore();
   }
 
+  // ── Dispersión (prisma espectral) ─────────────────────────────────────────
+
+  /**
+   * Dibuja el banco del prisma con espectro completo.
+   * El rayo blanco entra, el prisma lo descompone en N rayos coloreados (400–700 nm).
+   * Cada rayo tiene el color CIE real de su λ.
+   * Girar thetaInc cambia el ángulo de incidencia sobre la primera cara.
+   * En la desviación mínima el espectro es más limpio.
+   */
+  private drawDispersion(): void {
+    const ctx = this.ctx;
+
+    // Fondo oscuro
+    ctx.save();
+    ctx.fillStyle = '#0d0c0a';
+    ctx.fillRect(0, 0, this.W, this.H);
+    ctx.restore();
+
+    // Eje óptico
+    this.drawEjeOptico();
+
+    // Parámetros del prisma (los mismos que en escenaBanco de dispersion.ts)
+    const anguloApice = Math.PI / 4;  // 45°
+    const material: MaterialOptico = 'BK7';
+
+    // Fuente a la izquierda
+    const srcNorm = { x: -0.65, y: 0 };
+    const srcPx = this.normToPx(srcNorm.x, srcNorm.y);
+
+    // Dibujar rayo incidente (blanco, antes del prisma)
+    const prismaXPx = this.normToPx(0, 0);
+    const incAngle = this.thetaInc;  // ángulo de incidencia sobre primera cara
+    const yEntrada = srcNorm.y + (0 - srcNorm.x) * Math.tan(incAngle);
+    const entradaPx = this.normToPx(0, yEntrada);
+
+    ctx.save();
+    ctx.strokeStyle = 'rgba(239,231,216,0.75)';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(srcPx.x, srcPx.y);
+    ctx.lineTo(entradaPx.x, entradaPx.y);
+    ctx.stroke();
+    ctx.restore();
+
+    // Dibujar el prisma (triángulo: vértice arriba, dos caras)
+    const prismaCX = prismaXPx.x;
+    const prismaCY = prismaXPx.y;
+    const h = this.CY * 0.5;  // semi-altura del prisma en px
+    const base = h * Math.tan(anguloApice / 2);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(56,189,248,0.45)';
+    ctx.fillStyle = 'rgba(56,189,248,0.04)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(prismaCX, prismaCY - h);          // vértice superior
+    ctx.lineTo(prismaCX + base, prismaCY + h * 0.5);  // derecha inferior
+    ctx.lineTo(prismaCX - base, prismaCY + h * 0.5);  // izquierda inferior
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+
+    // Muestrear λ de 400 a 700 nm (N rayos)
+    const N_RAYOS = 28;
+    const lambdas: number[] = [];
+    for (let i = 0; i < N_RAYOS; i++) {
+      lambdas.push(400 + (300 * i) / (N_RAYOS - 1));
+    }
+
+    // Punto de salida extendido
+    const xFin = 0.95;
+
+    // Desviación de referencia para λ=550 (para calcular el ángulo de salida en el banco)
+    const nRef = nSellmeier(material, 550);
+    const DRef = prismaDesviacion(nRef, anguloApice, Math.abs(incAngle));
+
+    lambdas.forEach(lambda => {
+      const n = nSellmeier(material, lambda);
+      const D = prismaDesviacion(n, anguloApice, Math.abs(incAngle));
+      if (isNaN(D)) return;
+
+      // Ángulo de salida del rayo: el rayo sale del prisma desviado D respecto a la incidencia
+      // La desviación se aplica al eje original: el rayo sale hacia abajo-derecha más o menos
+      const anguloSalida = incAngle >= 0 ? D : -D;
+
+      // Punto de salida del prisma (aproximado en la segunda cara, x=base/2 norm)
+      const salidaNormX = base / this.CX;    // fracción del semiancho
+      const salidaNormY = yEntrada;           // misma altura de entrada (simplificado)
+      const salidaPx = this.normToPx(salidaNormX, salidaNormY);
+
+      // Extender el rayo desde la salida del prisma
+      const dxFin = (xFin - salidaNormX) * this.CX;
+      const dyFin = dxFin * Math.tan(-anguloSalida);
+      const finPx = {
+        x: salidaPx.x + dxFin,
+        y: salidaPx.y + dyFin,
+      };
+
+      // Color CIE del rayo
+      const [r, g, b] = wavelengthToSRGB(lambda);
+      const color = `rgba(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)},0.85)`;
+
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      ctx.lineCap = 'round';
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 3;
+      ctx.beginPath();
+      ctx.moveTo(salidaPx.x, salidaPx.y);
+      ctx.lineTo(finPx.x, finPx.y);
+      ctx.stroke();
+      ctx.restore();
+    });
+
+    // Marcador de la fuente
+    ctx.save();
+    ctx.fillStyle = 'rgba(239,231,216,0.9)';
+    ctx.shadowColor = 'rgba(239,231,216,0.6)';
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.arc(srcPx.x, srcPx.y, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Indicador de desviación mínima (si el ángulo de incidencia está cerca de Dmin)
+    if (!isNaN(DRef)) {
+      const Dmin = desviacionMinima(nRef, anguloApice);
+      const incMin = (Dmin + anguloApice) / 2;  // ángulo de incidencia en Dmin
+      if (!isNaN(incMin) && Math.abs(Math.abs(incAngle) - incMin) < 0.05) {
+        ctx.save();
+        ctx.fillStyle = DOMAIN_COLORS.beam;
+        ctx.font = '11px var(--font-mono, monospace)';
+        ctx.textAlign = 'center';
+        ctx.fillText('δ_min', this.normToPx(0.5, 0.7).x, this.normToPx(0.5, 0.7).y);
+        ctx.restore();
+      }
+    }
+  }
+
+  // ── Lentes (formación de imagen) ──────────────────────────────────────────
+
+  /**
+   * Dibuja el banco de lentes:
+   * - Eje óptico
+   * - Objeto flecha (arrastrable en x) a la izquierda
+   * - Lente delgada en x=0 (dibujada como elipse biconvexa)
+   * - Focos F y F' marcados
+   * - Abanico de 5 rayos desde la punta del objeto que refractan
+   * - Imagen flecha: real/invertida si s>f, virtual/derecha si s<f
+   */
+  private drawLentes(): void {
+    const ctx = this.ctx;
+
+    // Fondo oscuro
+    ctx.save();
+    ctx.fillStyle = '#0d0c0a';
+    ctx.fillRect(0, 0, this.W, this.H);
+    ctx.restore();
+
+    this.drawEjeOptico();
+
+    const f = this.lentesF;           // distancia focal norm
+    const xObj = this.lentesObjX;     // posición x del objeto (< 0)
+    const yObj = 0.28;                // semi-altura del objeto (fija)
+    const s = Math.abs(xObj);         // distancia objeto (positiva)
+
+    // Ecuación de Gauss
+    const invSp = 1 / f - 1 / s;
+    const sPrima = invSp === 0 ? Infinity : 1 / invSp;
+    const m = isFinite(sPrima) ? -sPrima / s : 0;
+
+    // Lente: elipse biconvexa centrada en x=0
+    const lentePx = this.normToPx(0, 0);
+    const lH = this.CY * 0.55;    // semi-alto en px
+    const lW = 14;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(56,189,248,0.7)';
+    ctx.fillStyle = 'rgba(56,189,248,0.06)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    // Cara izquierda (arco convexo)
+    ctx.moveTo(lentePx.x, lentePx.y - lH);
+    ctx.bezierCurveTo(
+      lentePx.x - lW, lentePx.y - lH * 0.5,
+      lentePx.x - lW, lentePx.y + lH * 0.5,
+      lentePx.x, lentePx.y + lH
+    );
+    // Cara derecha (arco convexo)
+    ctx.bezierCurveTo(
+      lentePx.x + lW, lentePx.y + lH * 0.5,
+      lentePx.x + lW, lentePx.y - lH * 0.5,
+      lentePx.x, lentePx.y - lH
+    );
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+
+    // Marcadores de focos F (objeto) y F' (imagen)
+    const fPx  = this.normToPx(-f, 0);
+    const fpPx = this.normToPx(f, 0);
+    for (const [pos, label] of [[fPx, 'F'], [fpPx, "F'"]] as Array<[{x:number,y:number}, string]>) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(245,167,44,0.7)';
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(245,167,44,0.55)';
+      ctx.font = '11px var(--font-mono, monospace)';
+      ctx.fillText(label, pos.x + 6, pos.y - 6);
+      ctx.restore();
+    }
+
+    // Objeto: flecha vertical en xObj
+    const objPx = this.normToPx(xObj, 0);
+    this.drawArrow(ctx, xObj, 0, xObj, yObj, DOMAIN_COLORS.ray, 2.5, false);
+
+    // Guía punteada de 2f
+    const f2Px = this.normToPx(-2 * f, 0);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(245,167,44,0.18)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 6]);
+    ctx.beginPath();
+    ctx.moveTo(f2Px.x, 0);
+    ctx.lineTo(f2Px.x, this.H);
+    ctx.stroke();
+    ctx.restore();
+
+    // Abanico de rayos desde la punta del objeto
+    // Usar trazarAbanico de imaging.ts para obtener las trayectorias
+    const lente = { f };
+    const N_RAYOS_FAN = 5;
+    const yMax = 0.35;   // apertura máxima del abanico (norm)
+
+    const trayectorias = trazarAbanico(yObj, xObj, lente, N_RAYOS_FAN, yMax, 0.95);
+
+    trayectorias.forEach(tray => {
+      if (tray.puntos.length < 2) return;
+      ctx.save();
+      ctx.strokeStyle = DOMAIN_COLORS.ray;
+      ctx.lineWidth = 1.3;
+      ctx.globalAlpha = 0.7;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      tray.puntos.forEach((pt, i) => {
+        const px = this.normToPx(pt.x, pt.y);
+        if (i === 0) ctx.moveTo(px.x, px.y);
+        else ctx.lineTo(px.x, px.y);
+      });
+      ctx.stroke();
+      ctx.restore();
+    });
+
+    // Imagen: flecha en (sPrima, m*yObj) si es real (sPrima > 0)
+    if (isFinite(sPrima)) {
+      const xImg = sPrima;          // a la derecha de la lente si real
+      const yImgTop = m * yObj;     // m < 0 = invertida
+      const esReal = sPrima > 0;
+
+      if (esReal && xImg < 1.0) {
+        // Imagen real
+        this.drawArrow(ctx, xImg, 0, xImg, yImgTop, DOMAIN_COLORS.wave, 2.0, false);
+        // Punto de convergencia
+        const convergePx = this.normToPx(xImg, yImgTop);
+        ctx.save();
+        ctx.fillStyle = DOMAIN_COLORS.wave;
+        ctx.shadowColor = DOMAIN_COLORS.wave;
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.arc(convergePx.x, convergePx.y, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      } else if (!esReal) {
+        // Imagen virtual: dibujar en xImg (negativo = mismo lado que objeto)
+        const xImgV = sPrima; // negativo
+        if (xImgV > -1.0) {
+          this.drawArrow(ctx, xImgV, 0, xImgV, yImgTop, DOMAIN_COLORS.wave, 1.5, true);
+        }
+      }
+    }
+
+    // Indicador de objeto en 2f (objetivo del capítulo)
+    const en2f = Math.abs(s - 2 * f) < 0.08;
+    if (en2f) {
+      ctx.save();
+      ctx.fillStyle = DOMAIN_COLORS.beam;
+      ctx.font = '12px var(--font-mono, monospace)';
+      ctx.textAlign = 'center';
+      ctx.fillText('2f ✓', objPx.x, objPx.y - 20);
+      ctx.restore();
+    }
+
+    // Marca del objeto (punto base)
+    ctx.save();
+    ctx.fillStyle = DOMAIN_COLORS.ray;
+    ctx.shadowColor = DOMAIN_COLORS.ray;
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.arc(objPx.x, objPx.y, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
   // ── Loop de animación ────────────────────────────────────────────────────
 
   private loop(): void {
@@ -820,6 +1167,8 @@ export class Bench {
 
     if (this.pinholeMode) {
       this.dragTarget = 'pinhole-obj';
+    } else if (this.lentesMode) {
+      this.dragTarget = 'pinhole-obj';   // reuse: moves lentesObjX horizontally
     } else if (this.fermatMode) {
       this.dragTarget = 'fermat';
     } else {
@@ -846,7 +1195,7 @@ export class Bench {
     if (!t) return;
     const rect = this.canvas.getBoundingClientRect();
     this.dragging = true;
-    this.dragTarget = this.pinholeMode ? 'pinhole-obj' : this.fermatMode ? 'fermat' : 'ray';
+    this.dragTarget = (this.pinholeMode || this.lentesMode) ? 'pinhole-obj' : this.fermatMode ? 'fermat' : 'ray';
     this.handleDrag({ x: t.clientX - rect.left, y: t.clientY - rect.top });
   }
 
@@ -888,18 +1237,43 @@ export class Bench {
     } else if (this.dragTarget === 'pinhole-obj') {
       // Mover el objeto flecha en x: solo la componente x, limitada al lado izquierdo
       const xClamp = Math.max(-0.9, Math.min(-0.1, norm.x));
-      this.objetoX = xClamp;
-      if (this.config.onPinholeSizeChange) {
-        // Notificamos el nuevo objetoX a través del callback existente (reutilizamos para posición)
-        // pero primero notificamos al exterior con el valor de objetoX
+      if (this.lentesMode) {
+        // En modo lentes movemos la posición x del objeto
+        this.lentesObjX = xClamp;
+        if (this.config.onLentesObjChange) {
+          this.config.onLentesObjChange(xClamp);
+        }
+      } else {
+        this.objetoX = xClamp;
+        // Notificar al exterior que el objeto se movió (reusamos onFermatPChange para transportar objetoX)
+        this.config.onFermatPChange(xClamp);
       }
-      // Notificar al exterior que el objeto se movió (reusamos onFermatPChange para transportar objetoX)
-      this.config.onFermatPChange(xClamp);
     }
   }
 
   private onResize(): void {
     this.resize();
+  }
+
+  /** Retorna el estado actual de lentes para el HUD */
+  getLentesState(): { s: number; sPrima: number; m: number; f: number } {
+    const f = this.lentesF;
+    const s = Math.abs(this.lentesObjX);
+    const invSp = 1 / f - 1 / s;
+    const sPrima = invSp === 0 ? Infinity : 1 / invSp;
+    const m = isFinite(sPrima) ? -sPrima / s : 0;
+    return { s, sPrima, m, f };
+  }
+
+  /** Retorna la desviación del prisma para el HUD (en grados) y λ dominante */
+  getDispersionState(): { desviacionDeg: number; lambdaDominante: number } {
+    const anguloApice = Math.PI / 4;
+    const material: MaterialOptico = 'BK7';
+    const nRef = nSellmeier(material, 550);
+    const D = prismaDesviacion(nRef, anguloApice, Math.abs(this.thetaInc));
+    const desviacionDeg = isNaN(D) ? 0 : (D * 180) / Math.PI;
+    // λ dominante: usamos 550 nm (verde) como referencia; en la desviación mínima más limpio
+    return { desviacionDeg, lambdaDominante: 550 };
   }
 
   /** Limpia recursos */

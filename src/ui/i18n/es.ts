@@ -128,4 +128,53 @@ export const es = {
   'desbloqueo.fuente.descripcion': 'Ahora puedes añadir fuentes de luz en el banco libre.',
   'desbloqueo.espejo-plano': '¡Herramienta desbloqueada: Espejo plano!',
   'desbloqueo.espejo-plano.descripcion': 'Ahora puedes añadir espejos planos en el banco libre.',
+
+  // Dispersión — escena cinematográfica
+  'dispersion.frase': 'El blanco no es un color. Es todos los colores a la vez.',
+  'dispersion.titulo': 'Dispersión y color',
+  'dispersion.intuicion': 'El índice de refracción depende de la longitud de onda. El prisma no crea colores — los separa. El color no está en la luz: está en ti, en los conos de tu retina que interpretan cada frecuencia.',
+  'dispersion.deduccion.titulo': 'Ecuación de Sellmeier',
+  'dispersion.deduccion.texto': 'n²(λ) = 1 + Σ Bᵢλ² / (λ² − Cᵢ)',
+  'dispersion.deduccion.derivacion': 'Los electrones ligados del vidrio tienen frecuencias de resonancia. Cerca de cada resonancia el índice sube bruscamente (dispersión anómala). Lejos de ellas, n disminuye con λ (dispersión normal). El número de Abbe V = (nD−1)/(nF−nC) mide cuánto dispersa un material.',
+  'dispersion.deduccion.ver': 'Ver la ecuación',
+  'dispersion.deduccion.ocultar': 'Ocultar deducción',
+  'dispersion.comenzar': 'Abrir el prisma',
+
+  // Dispersión — banco
+  'dispersion.bench.instruccion': 'Arrastra el prisma (o ajusta la incidencia) para explorar el espectro',
+  'dispersion.bench.desviacion': 'Desviación',
+  'dispersion.bench.lambda': 'λ dominante',
+  'dispersion.bench.minimo': '¡Desviación mínima! El espectro es más limpio aquí.',
+  'dispersion.bench.completar': '¡Espectro separado! La luz blanca revela sus colores.',
+  'dispersion.objetivo.instruccion': 'Gira el prisma hasta alcanzar la desviación mínima',
+
+  // Desbloqueo dispersión
+  'desbloqueo.espectrometro': '¡Herramienta desbloqueada: Espectrómetro!',
+  'desbloqueo.espectrometro.descripcion': 'Ahora puedes analizar el espectro de fuentes en el banco libre.',
+
+  // Lentes — escena cinematográfica
+  'lentes.frase': 'Una lente no dobla la luz — la convoca en un punto.',
+  'lentes.titulo': 'Lentes y espejos curvos',
+  'lentes.intuicion': 'La lente delgada aplica Snell en dos superficies. El resultado paraxial es elegante: todos los rayos de un punto objeto convergen en un punto imagen. La ecuación de Gauss une objeto, imagen y distancia focal.',
+  'lentes.deduccion.titulo': 'Ecuación de Gauss',
+  'lentes.deduccion.texto': '1/s + 1/s′ = 1/f   |   m = −s′/s',
+  'lentes.deduccion.derivacion': 'Para s > f la imagen es real e invertida (m < 0). Para s < f la imagen es virtual y derecha (m > 0). En s = 2f el aumento es −1: la imagen es del mismo tamaño y está también a 2f. La construcción geométrica usa tres rayos principales: paralelo al eje → por foco imagen; por centro óptico → sin desvío; por foco objeto → paralelo al eje.',
+  'lentes.deduccion.ver': 'Ver la deducción',
+  'lentes.deduccion.ocultar': 'Ocultar deducción',
+  'lentes.comenzar': 'Explorar la lente',
+
+  // Lentes — banco
+  'lentes.bench.instruccion': 'Arrastra el objeto para cambiar la distancia s',
+  'lentes.bench.s': 's (objeto)',
+  'lentes.bench.sPrima': "s′ (imagen)",
+  'lentes.bench.m': 'm (aumento)',
+  'lentes.bench.f': 'f (focal)',
+  'lentes.bench.real': 'real',
+  'lentes.bench.virtual': 'virtual',
+  'lentes.bench.objetivo': 'Coloca el objeto en 2f para obtener m = −1',
+  'lentes.bench.completar': '¡Imagen nítida en 2f! Aumento exactamente −1.',
+
+  // Desbloqueo lentes
+  'desbloqueo.lente': '¡Herramienta desbloqueada: Lente delgada!',
+  'desbloqueo.lente.descripcion': 'Ahora puedes añadir lentes convergentes y divergentes en el banco libre.',
 } as const;

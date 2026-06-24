@@ -3,7 +3,7 @@
 import { t } from '../i18n';
 import type { Objetivo } from '../../content/chapters/types';
 
-export type HUDMode = 'refraccion' | 'reflexion' | 'fermat-reflexion' | 'oculto';
+export type HUDMode = 'refraccion' | 'reflexion' | 'fermat-reflexion' | 'dispersion' | 'lentes' | 'oculto';
 
 export interface HUDState {
   n1: number;
@@ -13,6 +13,15 @@ export interface HUDState {
   tir: boolean;
   /** Modo del HUD según el capítulo */
   mode?: HUDMode;
+  /** Desviación del prisma en grados (modo dispersion) */
+  desviacionDeg?: number;
+  /** Longitud de onda dominante del espectro (modo dispersion) */
+  lambdaDominante?: number;
+  /** s, s', m, f para el modo lentes */
+  lentesS?: number;
+  lentesSPrima?: number;
+  lentesM?: number;
+  lentesF?: number;
 }
 
 export interface HUDHandle {
@@ -28,6 +37,8 @@ export function hudModeFromObjetivo(objetivo: Objetivo | undefined): HUDMode {
     case 'reflexion-blanco': return 'reflexion';
     case 'fermat-reflexion': return 'fermat-reflexion';
     case 'fermat':           return 'refraccion';
+    case 'dispersion':       return 'dispersion';
+    case 'lentes':           return 'lentes';
     default:                 return 'refraccion';
   }
 }
@@ -78,6 +89,34 @@ export function mountHUD(container: HTMLElement, initial: HUDState): HUDHandle {
         <span class="hud__label">θᵣ</span>
         <span class="hud__value">${fmt(s.theta1Deg, 1)}°</span>
         <div class="hud__law-row">θᵢ = θᵣ</div>
+      `;
+    } else if (mode === 'dispersion') {
+      titleText = t('dispersion.titulo');
+      const D = s.desviacionDeg ?? 0;
+      const lam = s.lambdaDominante ?? 550;
+      bodyContent = `
+        <span class="hud__label">${t('dispersion.bench.desviacion')}</span>
+        <span class="hud__value">${fmt(D, 1)}°</span>
+        <span class="hud__label">${t('dispersion.bench.lambda')}</span>
+        <span class="hud__value">${lam.toFixed(0)} nm</span>
+      `;
+    } else if (mode === 'lentes') {
+      titleText = t('lentes.titulo');
+      const s_ = s.lentesS ?? 0;
+      const sp = s.lentesSPrima;
+      const m = s.lentesM ?? 0;
+      const f = s.lentesF ?? 0;
+      const spStr = sp === undefined || !isFinite(sp) ? '∞' : fmt(sp, 2);
+      const realVirtual = (sp !== undefined && isFinite(sp) && sp > 0) ? t('lentes.bench.real') : t('lentes.bench.virtual');
+      bodyContent = `
+        <span class="hud__label">${t('lentes.bench.s')}</span>
+        <span class="hud__value">${fmt(s_, 2)}</span>
+        <span class="hud__label">${t('lentes.bench.sPrima')}</span>
+        <span class="hud__value">${spStr} (${realVirtual})</span>
+        <span class="hud__label">${t('lentes.bench.m')}</span>
+        <span class="hud__value">${fmt(m, 2)}</span>
+        <span class="hud__label">${t('lentes.bench.f')}</span>
+        <span class="hud__value">${fmt(f, 2)}</span>
       `;
     } else {
       // Capítulo de refracción (modo por defecto)

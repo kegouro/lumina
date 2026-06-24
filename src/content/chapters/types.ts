@@ -55,12 +55,30 @@ export interface ObjetivoFermatReflexion {
   B: { x: number; y: number };
 }
 
+/** Objetivo tipo dispersion: separar el espectro / alcanzar desviación mínima */
+export interface ObjetivoDispersion {
+  tipo: 'dispersion';
+  /** Tolerancia en grados respecto a la desviación mínima para considerar objetivo cumplido */
+  toleranciaGrados: number;
+}
+
+/** Objetivo tipo lentes: formar imagen nítida (objeto en 2f, m ≈ −1) */
+export interface ObjetivoLentes {
+  tipo: 'lentes';
+  /** Distancia focal de la lente (en unidades normalizadas bench) */
+  f: number;
+  /** Tolerancia relativa en la posición del objeto respecto a 2f */
+  tolerancia: number;
+}
+
 /** Unión de objetivos posibles (extensible con nuevos tipos) */
 export type Objetivo =
   | ObjetivoFermat
   | ObjetivoRayo
   | ObjetivoReflexionBlanco
-  | ObjetivoFermatReflexion;
+  | ObjetivoFermatReflexion
+  | ObjetivoDispersion
+  | ObjetivoLentes;
 
 /** Descripción completa de un capítulo */
 export interface Capitulo {

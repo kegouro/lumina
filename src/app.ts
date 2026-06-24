@@ -16,9 +16,10 @@ import { getCapitulo } from './content/chapters';
 import { marcarCompletado, desbloquearHerramienta, loadProgress } from './services/persistence';
 import { fade } from './cinematics';
 import { t } from './ui/i18n';
-import type { ObjetivoReflexionBlanco } from './content/chapters/types';
+import type { ObjetivoReflexionBlanco, ObjetivoLentes } from './content/chapters/types';
 import { trazarRayos } from './core/content/optics';
 import type { EscenaOptica } from './core/content/optics';
+import { desviacionMinima, nSellmeier, prismaDesviacion } from './core/dispersion';
 
 /** Estado global de la aplicación */
 interface AppState {
@@ -31,6 +32,8 @@ interface AppState {
   capituloActualId: string;
   /** Posición x normalizada del objeto pinhole (solo en modo pinhole) */
   pinholeObjX: number;
+  /** Posición x normalizada del objeto en modo lentes */
+  lentesObjX: number;
 }
 
 const STATE: AppState = {
@@ -42,6 +45,7 @@ const STATE: AppState = {
   fermatMode: false,
   capituloActualId: 'refraccion',
   pinholeObjX: -0.55,
+  lentesObjX: -0.60,
 };
 
 let appContainer: HTMLElement;
@@ -130,6 +134,8 @@ function irAlBanco(capituloId: string): void {
   const esFermatReflexion = objetivo?.tipo === 'fermat-reflexion';
   const esFermat = objetivo?.tipo === 'fermat';
   const esReflexionBlanco = objetivo?.tipo === 'reflexion-blanco';
+  const esDispersion = objetivo?.tipo === 'dispersion';
+  const esLentes = objetivo?.tipo === 'lentes';
 
   // Banco Canvas2D con EscenaOptica del capítulo
   const benchConfig = {
@@ -148,6 +154,14 @@ function irAlBanco(capituloId: string): void {
       blancoY: objetivo.blancoY,
       blancoTolerancia: objetivo.tolerancia,
     } : {}),
+    // Modo dispersión
+    ...(esDispersion ? { dispersionMode: true } : {}),
+    // Modo lentes
+    ...(esLentes && objetivo?.tipo === 'lentes' ? {
+      lentesMode: true,
+      lentesF: objetivo.f,
+      lentesObjX: STATE.lentesObjX,
+    } : {}),
     onAngleChange(theta: number) {
       STATE.thetaInc = theta;
       actualizarHUD(capituloId);
@@ -156,6 +170,13 @@ function irAlBanco(capituloId: string): void {
         const impacto = verificarImpactoBlanco(capitulo!.escenaBanco, objetivo, theta);
         bench?.setBlancoImpactado(impacto);
         if (impacto) manejarDesbloqueo(capituloId);
+      }
+      // Dispersión: verificar si el ángulo está cerca de la desviación mínima
+      if (esDispersion && objetivo?.tipo === 'dispersion') {
+        actualizarHUD(capituloId);
+        if (verificarDispersionMinima(theta, objetivo.toleranciaGrados)) {
+          manejarDesbloqueo(capituloId);
+        }
       }
     },
     onFermatPChange(py: number) {
@@ -166,6 +187,16 @@ function irAlBanco(capituloId: string): void {
         pinholeInteractuado = true;
       } else if (fermatHandle) {
         fermatHandle.updateP(py);
+      }
+    },
+    onLentesObjChange(objX: number) {
+      STATE.lentesObjX = objX;
+      actualizarHUD(capituloId);
+      // Verificar objetivo lentes
+      if (esLentes && objetivo?.tipo === 'lentes') {
+        if (verificarObjetivoLentes(objX, objetivo)) {
+          manejarDesbloqueo(capituloId);
+        }
       }
     },
     ...(capitulo?.escenaBanco ? { escena: capitulo.escenaBanco } : {}),
@@ -205,6 +236,10 @@ function irAlBanco(capituloId: string): void {
     montarPanelPinhole(capituloId);
   } else if (esReflexionBlanco && objetivo?.tipo === 'reflexion-blanco') {
     montarPanelReflexion(capituloId, objetivo);
+  } else if (esDispersion && objetivo?.tipo === 'dispersion') {
+    montarPanelDispersion(capituloId);
+  } else if (esLentes && objetivo?.tipo === 'lentes') {
+    montarPanelLentes(capituloId, objetivo);
   }
 }
 
@@ -289,6 +324,39 @@ function calcularHUDState(capituloId?: string) {
     };
   }
 
+  if (mode === 'dispersion') {
+    const anguloApice = Math.PI / 4;
+    const nRef = nSellmeier('BK7', 550);
+    const D = prismaDesviacion(nRef, anguloApice, Math.abs(STATE.thetaInc));
+    const desviacionDeg = isNaN(D) ? 0 : (D * 180) / Math.PI;
+    return {
+      n1: 1.0,
+      n2: 1.5,
+      theta1Deg: (STATE.thetaInc * 180) / Math.PI,
+      theta2Deg: 0,
+      tir: false,
+      mode: 'dispersion' as const,
+      desviacionDeg,
+      lambdaDominante: 550,
+    };
+  }
+
+  if (mode === 'lentes') {
+    const lentesState = bench?.getLentesState();
+    const base = {
+      n1: 1.0,
+      n2: 1.0,
+      theta1Deg: 0,
+      theta2Deg: 0,
+      tir: false,
+      mode: 'lentes' as const,
+    };
+    if (lentesState) {
+      return { ...base, lentesS: lentesState.s, lentesSPrima: lentesState.sPrima, lentesM: lentesState.m, lentesF: lentesState.f };
+    }
+    return base;
+  }
+
   const r = refract(STATE.n1, STATE.n2, STATE.thetaInc);
   return {
     n1: STATE.n1,
@@ -359,6 +427,12 @@ function manejarDesbloqueo(capituloId: string): void {
   } else if (tipo === 'fermat-reflexion') {
     desbloquearHerramienta('espejo-plano');
     mostrarBannerDesbloqueo('desbloqueo.espejo-plano', 'desbloqueo.espejo-plano.descripcion');
+  } else if (tipo === 'dispersion') {
+    desbloquearHerramienta('espectrometro');
+    mostrarBannerDesbloqueo('desbloqueo.espectrometro', 'desbloqueo.espectrometro.descripcion');
+  } else if (tipo === 'lentes') {
+    desbloquearHerramienta('lente');
+    mostrarBannerDesbloqueo('desbloqueo.lente', 'desbloqueo.lente.descripcion');
   } else {
     mostrarBannerDesbloqueo('desbloqueo.interfaz', 'desbloqueo.descripcion');
   }
@@ -389,6 +463,73 @@ function mostrarBannerDesbloqueo(tituloKey: import('./ui/i18n').TranslationKey, 
   });
 }
 
+// ── Panel dispersión ──────────────────────────────────────────────────────────
+
+let dispersionPanel: HTMLElement | null = null;
+
+function montarPanelDispersion(capituloId: string): void {
+  const panel = document.createElement('div');
+  panel.className = 'pinhole-panel';  // reutilizamos el estilo del panel pinhole
+  panel.setAttribute('role', 'complementary');
+
+  panel.innerHTML = `
+    <div class="pinhole-panel__label">${t('dispersion.objetivo.instruccion')}</div>
+    <button id="btn-dispersion-ok" class="pinhole-panel__btn">
+      ${t('dispersion.bench.completar')}
+    </button>
+  `;
+
+  appContainer.appendChild(panel);
+  dispersionPanel = panel;
+
+  panel.querySelector('#btn-dispersion-ok')?.addEventListener('click', () => {
+    manejarDesbloqueo(capituloId);
+  });
+}
+
+/** Verifica si el ángulo de incidencia está cerca de la desviación mínima del prisma */
+function verificarDispersionMinima(theta: number, toleranciaGrados: number): boolean {
+  const anguloApice = Math.PI / 4;
+  const nRef = nSellmeier('BK7', 550);
+  const Dmin = desviacionMinima(nRef, anguloApice);
+  if (isNaN(Dmin)) return false;
+  // El ángulo de incidencia en la desviación mínima es (Dmin + A) / 2
+  const incMin = (Dmin + anguloApice) / 2;
+  const tolRad = (toleranciaGrados * Math.PI) / 180;
+  return Math.abs(Math.abs(theta) - incMin) < tolRad;
+}
+
+// ── Panel lentes ──────────────────────────────────────────────────────────────
+
+let lentesPanel: HTMLElement | null = null;
+
+function montarPanelLentes(capituloId: string, _obj: ObjetivoLentes): void {
+  const panel = document.createElement('div');
+  panel.className = 'pinhole-panel';
+  panel.setAttribute('role', 'complementary');
+
+  panel.innerHTML = `
+    <div class="pinhole-panel__label">${t('lentes.bench.objetivo')}</div>
+    <button id="btn-lentes-ok" class="pinhole-panel__btn">
+      ${t('lentes.bench.completar')}
+    </button>
+  `;
+
+  appContainer.appendChild(panel);
+  lentesPanel = panel;
+
+  panel.querySelector('#btn-lentes-ok')?.addEventListener('click', () => {
+    manejarDesbloqueo(capituloId);
+  });
+}
+
+/** Verifica si el objeto está en 2f (objetivo del capítulo lentes) */
+function verificarObjetivoLentes(objX: number, obj: ObjetivoLentes): boolean {
+  const s = Math.abs(objX);
+  const dos_f = 2 * obj.f;
+  return Math.abs(s - dos_f) / dos_f < obj.tolerancia;
+}
+
 // ── Utilidades ───────────────────────────────────────────────────────────────
 
 function limpiarPantalla(): void {
@@ -401,6 +542,8 @@ function limpiarPantalla(): void {
   fermatHandle = null;
   pinholePanel = null;
   reflexionPanel = null;
+  dispersionPanel = null;
+  lentesPanel = null;
   pinholeInteractuado = false;
 
   // Limpiar DOM (excepto el appContainer)

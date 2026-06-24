@@ -131,4 +131,53 @@ export const en: Record<keyof typeof es, string> = {
   'desbloqueo.fuente.descripcion': 'You can now add light sources in the free lab.',
   'desbloqueo.espejo-plano': 'Tool unlocked: Flat mirror!',
   'desbloqueo.espejo-plano.descripcion': 'You can now add flat mirrors in the free lab.',
+
+  // Dispersion — cinematic scene
+  'dispersion.frase': 'White is not a colour. It is all colours at once.',
+  'dispersion.titulo': 'Dispersion and colour',
+  'dispersion.intuicion': 'The refractive index depends on wavelength. The prism does not create colours — it separates them. Colour is not in the light: it is in you, in the cones of your retina that interpret each frequency.',
+  'dispersion.deduccion.titulo': 'Sellmeier equation',
+  'dispersion.deduccion.texto': 'n²(λ) = 1 + Σ Bᵢλ² / (λ² − Cᵢ)',
+  'dispersion.deduccion.derivacion': 'Bound electrons in glass have resonance frequencies. Near each resonance the index rises sharply (anomalous dispersion). Far from them n decreases with λ (normal dispersion). The Abbe number V = (nD−1)/(nF−nC) measures how much a material disperses.',
+  'dispersion.deduccion.ver': 'Show the equation',
+  'dispersion.deduccion.ocultar': 'Hide derivation',
+  'dispersion.comenzar': 'Open the prism',
+
+  // Dispersion — bench
+  'dispersion.bench.instruccion': 'Drag the prism (or adjust incidence) to explore the spectrum',
+  'dispersion.bench.desviacion': 'Deviation',
+  'dispersion.bench.lambda': 'Dominant λ',
+  'dispersion.bench.minimo': 'Minimum deviation! The spectrum is cleanest here.',
+  'dispersion.bench.completar': 'Spectrum separated! White light reveals its colours.',
+  'dispersion.objetivo.instruccion': 'Rotate the prism until you reach minimum deviation',
+
+  // Dispersion unlock
+  'desbloqueo.espectrometro': 'Tool unlocked: Spectrometer!',
+  'desbloqueo.espectrometro.descripcion': 'You can now analyse source spectra in the free lab.',
+
+  // Lenses — cinematic scene
+  'lentes.frase': 'A lens does not bend light — it summons it to a point.',
+  'lentes.titulo': 'Lenses and curved mirrors',
+  'lentes.intuicion': 'A thin lens applies Snell at two surfaces. The paraxial result is elegant: all rays from one object point converge at one image point. The Gaussian lens equation links object, image and focal length.',
+  'lentes.deduccion.titulo': "Gaussian lens equation",
+  'lentes.deduccion.texto': '1/s + 1/s′ = 1/f   |   m = −s′/s',
+  'lentes.deduccion.derivacion': 'For s > f the image is real and inverted (m < 0). For s < f the image is virtual and upright (m > 0). At s = 2f the magnification is −1: the image is the same size and also at 2f. The geometric construction uses three principal rays: parallel to axis → through image focus; through optical centre → undeviated; through object focus → parallel to axis.',
+  'lentes.deduccion.ver': 'Show derivation',
+  'lentes.deduccion.ocultar': 'Hide derivation',
+  'lentes.comenzar': 'Explore the lens',
+
+  // Lenses — bench
+  'lentes.bench.instruccion': 'Drag the object to change distance s',
+  'lentes.bench.s': 's (object)',
+  'lentes.bench.sPrima': "s′ (image)",
+  'lentes.bench.m': 'm (magnification)',
+  'lentes.bench.f': 'f (focal)',
+  'lentes.bench.real': 'real',
+  'lentes.bench.virtual': 'virtual',
+  'lentes.bench.objetivo': 'Place the object at 2f to achieve m = −1',
+  'lentes.bench.completar': 'Sharp image at 2f! Magnification exactly −1.',
+
+  // Lenses unlock
+  'desbloqueo.lente': 'Tool unlocked: Thin lens!',
+  'desbloqueo.lente.descripcion': 'You can now add converging and diverging lenses in the free lab.',
 };
