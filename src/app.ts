@@ -5,7 +5,7 @@ import { setLang } from './ui/i18n';
 import type { Lang } from './ui/i18n';
 import { mountStartMenu } from './ui/startmenu';
 import { mountStory } from './ui/story';
-import { mountHUD } from './ui/hud';
+import { mountHUD, hudModeFromObjetivo } from './ui/hud';
 import type { HUDHandle } from './ui/hud';
 import { mountFermatPanel } from './ui/fermat';
 import type { FermatHandle } from './ui/fermat';
@@ -143,12 +143,19 @@ function irAlBanco(capituloId: string): void {
       pinholeSize: 0.08,
       objetoX: STATE.pinholeObjX,
     } : {}),
+    // Pasar blanco de reflexión al banco para que lo dibuje
+    ...(esReflexionBlanco && objetivo?.tipo === 'reflexion-blanco' ? {
+      blancoY: objetivo.blancoY,
+      blancoTolerancia: objetivo.tolerancia,
+    } : {}),
     onAngleChange(theta: number) {
       STATE.thetaInc = theta;
       actualizarHUD(capituloId);
-      // Detectar impacto en blanco para reflexion-blanco
+      // Detectar impacto en blanco para reflexion-blanco y notificar al banco
       if (esReflexionBlanco && objetivo?.tipo === 'reflexion-blanco') {
-        verificarImpactoBlanco(capitulo!.escenaBanco, objetivo, theta);
+        const impacto = verificarImpactoBlanco(capitulo!.escenaBanco, objetivo, theta);
+        bench?.setBlancoImpactado(impacto);
+        if (impacto) manejarDesbloqueo(capituloId);
       }
     },
     onFermatPChange(py: number) {
@@ -164,6 +171,12 @@ function irAlBanco(capituloId: string): void {
     ...(capitulo?.escenaBanco ? { escena: capitulo.escenaBanco } : {}),
   };
   bench = new Bench(benchConfig);
+
+  // Verificar impacto inicial (ángulo por defecto puede ya acertar)
+  if (esReflexionBlanco && objetivo?.tipo === 'reflexion-blanco') {
+    const impactoInicial = verificarImpactoBlanco(capitulo!.escenaBanco, objetivo, STATE.thetaInc);
+    bench.setBlancoImpactado(impactoInicial);
+  }
 
   // HUD — para reflexión mostramos θᵢ = θᵣ en vivo
   hudHandle = mountHUD(appContainer, calcularHUDState(capituloId));
@@ -249,10 +262,22 @@ function montarPanelReflexion(capituloId: string, obj: ObjetivoReflexionBlanco):
 function calcularHUDState(capituloId?: string) {
   const capitulo = capituloId ? getCapitulo(capituloId) : undefined;
   const objetivo = capitulo?.objetivo;
-  const esReflexion = objetivo?.tipo === 'reflexion-blanco' || objetivo?.tipo === 'fermat-reflexion';
+  const mode = hudModeFromObjetivo(objetivo);
 
-  if (esReflexion) {
-    // En reflexión θᵢ = θᵣ (n1=n2=1)
+  if (mode === 'oculto') {
+    // Pinhole: el HUD no se muestra
+    return {
+      n1: 1.0,
+      n2: 1.0,
+      theta1Deg: 0,
+      theta2Deg: 0,
+      tir: false,
+      mode: 'oculto' as const,
+    };
+  }
+
+  if (mode === 'reflexion' || mode === 'fermat-reflexion') {
+    // Reflexión: θᵢ = θᵣ (n1=n2=1)
     const thetaDeg = (STATE.thetaInc * 180) / Math.PI;
     return {
       n1: 1.0,
@@ -260,6 +285,7 @@ function calcularHUDState(capituloId?: string) {
       theta1Deg: Math.abs(thetaDeg),
       theta2Deg: Math.abs(thetaDeg),
       tir: false,
+      mode,
     };
   }
 
@@ -270,6 +296,7 @@ function calcularHUDState(capituloId?: string) {
     theta1Deg: (STATE.thetaInc * 180) / Math.PI,
     theta2Deg: (r.theta * 180) / Math.PI,
     tir: r.tir,
+    mode,
   };
 }
 
@@ -285,26 +312,28 @@ function actualizarHUD(capituloId?: string): void {
   }
 }
 
-// Verificar si el rayo reflejado impacta el blanco
+// Verificar si el rayo reflejado impacta el blanco — devuelve true si hay impacto
 function verificarImpactoBlanco(
   escena: EscenaOptica,
   obj: ObjetivoReflexionBlanco,
   _theta: number
-): void {
+): boolean {
   const escenaActual: EscenaOptica = {
     elementos: escena.elementos.map(el => {
       if (el.tipo === 'fuente') return { ...el, angulo: STATE.thetaInc };
       return el;
     }),
   };
-  const puntos = trazarRayos(escenaActual, 0.95);
+  // Extender el rayo hasta x=0.9 (lado derecho del banco donde está el blanco)
+  const puntos = trazarRayos(escenaActual, 0.9);
   if (puntos.length >= 3) {
-    // El último punto es la extensión final del rayo reflejado
+    // El último punto del rayo reflejado (después del espejo)
     const lastY = puntos[puntos.length - 1]!.y;
     if (Math.abs(lastY - obj.blancoY) < obj.tolerancia) {
-      manejarDesbloqueo(STATE.capituloActualId);
+      return true;
     }
   }
+  return false;
 }
 
 // ── Desbloqueo ───────────────────────────────────────────────────────────────

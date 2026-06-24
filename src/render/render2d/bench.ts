@@ -23,6 +23,10 @@ export interface BenchConfig {
   pinholeSize?: number;
   /** Posición x normalizada del objeto flecha */
   objetoX?: number;
+  /** Posición y normalizada del blanco de reflexión (solo capítulo reflexion-blanco) */
+  blancoY?: number;
+  /** Tolerancia normalizada para resaltar el blanco como impactado */
+  blancoTolerancia?: number;
   onAngleChange: (theta: number) => void;
   onFermatPChange: (py: number) => void;  // py en coordenadas bench norm [-1, 1]
   onPinholeSizeChange?: (size: number) => void;
@@ -103,6 +107,11 @@ export class Bench {
   private animFrame: number | null = null;
   private pulseProgress: number = 1;  // 0..1 para el pulso de propagación
 
+  // Blanco de reflexión
+  private blancoY: number | null = null;      // posición y normalizada del blanco
+  private blancoTolerancia: number = 0.08;    // tolerancia para el highlight
+  private blancoImpactado: boolean = false;   // ¿el rayo pasa por el blanco?
+
   // Geometría del bench en píxeles (se recalcula en resize)
   private W = 0;
   private H = 0;
@@ -128,6 +137,8 @@ export class Bench {
     this.pinholeMode = config.pinholeMode ?? false;
     if (config.pinholeSize !== undefined) this.pinholeSize = config.pinholeSize;
     if (config.objetoX !== undefined) this.objetoX = config.objetoX;
+    if (config.blancoY !== undefined) this.blancoY = config.blancoY;
+    if (config.blancoTolerancia !== undefined) this.blancoTolerancia = config.blancoTolerancia;
 
     const ctx = this.canvas.getContext('2d');
     if (!ctx) throw new Error('No se pudo obtener el contexto 2D del canvas');
@@ -148,7 +159,14 @@ export class Bench {
     if (s.pinholeMode !== undefined) this.pinholeMode = s.pinholeMode;
     if (s.pinholeSize !== undefined) this.pinholeSize = s.pinholeSize;
     if (s.objetoX !== undefined) this.objetoX = s.objetoX;
+    if (s.blancoY !== undefined) this.blancoY = s.blancoY;
+    if (s.blancoTolerancia !== undefined) this.blancoTolerancia = s.blancoTolerancia;
     this.triggerPulse();
+  }
+
+  /** Notifica al banco si el rayo reflejado impacta el blanco (para resaltarlo) */
+  setBlancoImpactado(impactado: boolean): void {
+    this.blancoImpactado = impactado;
   }
 
   /** Lanza el pulso de propagación */
@@ -215,6 +233,11 @@ export class Bench {
     } else {
       this.drawRay();
     }
+
+    // Dibujar blanco de reflexión si está configurado
+    if (this.blancoY !== null) {
+      this.drawBlanco(this.blancoY, this.blancoImpactado);
+    }
   }
 
   /** Dibuja los dos medios con tinte sutil */
@@ -253,6 +276,64 @@ export class Bench {
     ctx.moveTo(0, this.CY);
     ctx.lineTo(this.W, this.CY);
     ctx.stroke();
+    ctx.restore();
+  }
+
+  /**
+   * Dibuja el blanco de reflexión: diana circular en la posición y dada.
+   * Se coloca en el lado derecho del canvas (x normalizado ≈ 0.75).
+   * Cuando impactado=true se ilumina con glow dorado.
+   */
+  private drawBlanco(blancoYNorm: number, impactado: boolean): void {
+    const ctx = this.ctx;
+    // El blanco se sitúa en el lado derecho del banco (x=0.75 normalizado)
+    const pos = this.normToPx(0.75, blancoYNorm);
+    const r = 14;
+    const colorOuter = impactado ? '#f5a72c' : 'rgba(56,189,248,0.55)';
+    const colorInner = impactado ? '#ffe08a' : 'rgba(239,231,216,0.25)';
+
+    ctx.save();
+
+    if (impactado) {
+      // Glow dorado al impactar
+      ctx.shadowColor = '#f5a72c';
+      ctx.shadowBlur = 28;
+    }
+
+    // Anillo exterior
+    ctx.strokeStyle = colorOuter;
+    ctx.lineWidth = impactado ? 2.5 : 1.5;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Anillo medio
+    ctx.strokeStyle = colorOuter;
+    ctx.lineWidth = impactado ? 2 : 1;
+    ctx.globalAlpha = 0.65;
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, r * 0.6, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Punto central
+    ctx.globalAlpha = 1.0;
+    ctx.fillStyle = impactado ? '#f5a72c' : colorInner;
+    ctx.shadowBlur = impactado ? 14 : 0;
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, r * 0.22, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Línea guía punteada desde el eje hasta el blanco
+    ctx.globalAlpha = 0.2;
+    ctx.strokeStyle = 'rgba(154,138,118,0.5)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 5]);
+    ctx.beginPath();
+    ctx.moveTo(this.CX, pos.y);
+    ctx.lineTo(pos.x - r, pos.y);
+    ctx.stroke();
+
     ctx.restore();
   }
 

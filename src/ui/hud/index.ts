@@ -1,6 +1,9 @@
 // HUD de cristal — panel arrastrable y plegable con glassmorphism Pharos.
-// Muestra n₁, n₂, θ₁, θ₂ y estado TIR en tiempo real.
+// Consciente del capítulo: muestra información relevante según el tipo de objetivo.
 import { t } from '../i18n';
+import type { Objetivo } from '../../content/chapters/types';
+
+export type HUDMode = 'refraccion' | 'reflexion' | 'fermat-reflexion' | 'oculto';
 
 export interface HUDState {
   n1: number;
@@ -8,6 +11,8 @@ export interface HUDState {
   theta1Deg: number;
   theta2Deg: number;
   tir: boolean;
+  /** Modo del HUD según el capítulo */
+  mode?: HUDMode;
 }
 
 export interface HUDHandle {
@@ -15,7 +20,27 @@ export interface HUDHandle {
   destroy(): void;
 }
 
+/** Determina el modo HUD a partir del tipo de objetivo del capítulo */
+export function hudModeFromObjetivo(objetivo: Objetivo | undefined): HUDMode {
+  if (!objetivo) return 'refraccion';
+  switch (objetivo.tipo) {
+    case 'pinhole':          return 'oculto';
+    case 'reflexion-blanco': return 'reflexion';
+    case 'fermat-reflexion': return 'fermat-reflexion';
+    case 'fermat':           return 'refraccion';
+    default:                 return 'refraccion';
+  }
+}
+
 export function mountHUD(container: HTMLElement, initial: HUDState): HUDHandle {
+  // Si el modo es 'oculto', no montar nada
+  if (initial.mode === 'oculto') {
+    return {
+      update(_s: HUDState) { /* no-op */ },
+      destroy() { /* no-op */ },
+    };
+  }
+
   // Crear el panel
   const panel = document.createElement('div');
   panel.className = 'hud';
@@ -27,16 +52,37 @@ export function mountHUD(container: HTMLElement, initial: HUDState): HUDHandle {
 
   const render = (s: HUDState) => {
     currentState = s;
+    const mode = s.mode ?? 'refraccion';
+
+    // Si llega un update con mode oculto, ocultar el panel
+    if (mode === 'oculto') {
+      panel.style.display = 'none';
+      return;
+    }
+    panel.style.display = '';
+
     const fmt = (v: number, dec = 2) => v.toFixed(dec);
-    panel.innerHTML = `
-      <div class="hud__header">
-        <span class="hud__title">Refracción</span>
-        <button class="hud__toggle" aria-expanded="${!collapsed}"
-                aria-controls="hud-body">
-          ${collapsed ? t('hud.desplegar') : t('hud.plegar')}
-        </button>
-      </div>
-      <div class="hud__body ${collapsed ? 'collapsed' : ''}" id="hud-body">
+
+    let bodyContent: string;
+    let titleText: string;
+
+    if (mode === 'reflexion' || mode === 'fermat-reflexion') {
+      // Capítulos de reflexión: mostrar θᵢ = θᵣ
+      const titulo = mode === 'fermat-reflexion'
+        ? t('fermat.reflexion.titulo')
+        : t('reflexion.titulo');
+      titleText = titulo;
+      bodyContent = `
+        <span class="hud__label">θᵢ</span>
+        <span class="hud__value">${fmt(s.theta1Deg, 1)}°</span>
+        <span class="hud__label">θᵣ</span>
+        <span class="hud__value">${fmt(s.theta1Deg, 1)}°</span>
+        <div class="hud__law-row">θᵢ = θᵣ</div>
+      `;
+    } else {
+      // Capítulo de refracción (modo por defecto)
+      titleText = t('refraccion.titulo');
+      bodyContent = `
         <span class="hud__label">${t('hud.n1')}</span>
         <span class="hud__value">${fmt(s.n1)}</span>
         <span class="hud__label">${t('hud.n2')}</span>
@@ -46,8 +92,22 @@ export function mountHUD(container: HTMLElement, initial: HUDState): HUDHandle {
         <span class="hud__label">${t('hud.theta2')}</span>
         <span class="hud__value ${s.tir ? 'tir' : ''}">${s.tir ? '—' : fmt(s.theta2Deg, 1) + '°'}</span>
         ${s.tir ? `<div class="hud__tir-row">${t('hud.tir')}</div>` : ''}
+      `;
+    }
+
+    panel.innerHTML = `
+      <div class="hud__header">
+        <span class="hud__title">${titleText}</span>
+        <button class="hud__toggle" aria-expanded="${!collapsed}"
+                aria-controls="hud-body">
+          ${collapsed ? t('hud.desplegar') : t('hud.plegar')}
+        </button>
+      </div>
+      <div class="hud__body ${collapsed ? 'collapsed' : ''}" id="hud-body">
+        ${bodyContent}
       </div>
     `;
+
     // Conectar botón plegar
     const btn = panel.querySelector('.hud__toggle') as HTMLButtonElement | null;
     if (btn) {
