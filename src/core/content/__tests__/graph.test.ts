@@ -36,16 +36,19 @@ describe('graph — estaDesbloqueado', () => {
     expect(estaDesbloqueado('rayo', [])).toBe(true);
   });
 
-  it('refraccion (sin prereqs) está desbloqueado siempre', () => {
-    expect(estaDesbloqueado('refraccion', [])).toBe(true);
+  it('refraccion requiere reflexion — bloqueado sin reflexion', () => {
+    expect(estaDesbloqueado('refraccion', [])).toBe(false);
+    expect(estaDesbloqueado('refraccion', ['reflexion'])).toBe(true);
   });
 
-  it('fermat requiere refraccion — bloqueado si refraccion no está completada', () => {
+  it('fermat requiere refraccion y reflexion — bloqueado si falta alguno', () => {
     expect(estaDesbloqueado('fermat', [])).toBe(false);
+    expect(estaDesbloqueado('fermat', ['refraccion'])).toBe(false);
+    expect(estaDesbloqueado('fermat', ['reflexion'])).toBe(false);
   });
 
-  it('fermat se desbloquea cuando refraccion está completada', () => {
-    expect(estaDesbloqueado('fermat', ['refraccion'])).toBe(true);
+  it('fermat se desbloquea cuando refraccion y reflexion están completadas', () => {
+    expect(estaDesbloqueado('fermat', ['refraccion', 'reflexion'])).toBe(true);
   });
 
   it('lentes requiere refraccion Y reflexion', () => {

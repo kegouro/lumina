@@ -75,4 +75,57 @@ export const es = {
   'mapa.volver': 'Volver al menú',
   'mapa.ruta.pedagogica': 'Ruta pedagógica',
   'mapa.ruta.historica': 'Ruta histórica',
+
+  // Rayo — escena cinematográfica
+  'rayo.frase': 'Antes de toda óptica: un agujero, una flecha, y la oscuridad.',
+  'rayo.titulo': 'El rayo de luz',
+  'rayo.intuicion': 'La luz viaja en línea recta. Una cámara oscura lo demuestra: cada punto del objeto envía rayos en todas direcciones; solo los que pasan por el agujero llegan a la pared, dibujando la imagen invertida.',
+  'rayo.deduccion.titulo': 'Propagación rectilínea',
+  'rayo.deduccion.texto': 'Imagen invertida = trayectorias rectas + selección de apertura',
+  'rayo.deduccion.derivacion': 'Los rayos del extremo superior de la flecha que pasan por el agujero llegan al extremo inferior de la imagen, y viceversa. La inversión es consecuencia directa de la geometría rectilínea.',
+  'rayo.deduccion.ver': 'Ver por qué se invierte',
+  'rayo.deduccion.ocultar': 'Ocultar deducción',
+  'rayo.comenzar': 'Abrir la cámara oscura',
+
+  // Reflexión — escena cinematográfica
+  'reflexion.frase': 'El espejo no miente — devuelve exactamente lo que recibe.',
+  'reflexion.titulo': 'Reflexión',
+  'reflexion.intuicion': 'El ángulo de incidencia es igual al ángulo de reflexión. El espejo plano conserva el ángulo porque la componente normal del rayo invierte su signo y la tangencial se preserva.',
+  'reflexion.deduccion.titulo': 'Ley de reflexión',
+  'reflexion.deduccion.texto': 'θᵢ = θᵣ',
+  'reflexion.deduccion.derivacion': 'La normal al espejo es el eje de simetría: el rayo incidente y el reflejado forman ángulos iguales con ella. Esto equivale a invertir solo la componente perpendicular al espejo.',
+  'reflexion.deduccion.ver': 'Ver deducción',
+  'reflexion.deduccion.ocultar': 'Ocultar deducción',
+  'reflexion.comenzar': 'Explorar el espejo',
+
+  // Fermat — escena cinematográfica (capítulo completo)
+  'fermat.frase': 'La naturaleza es perezosa. Toma siempre el camino que cuesta menos tiempo.',
+  'fermat.titulo.escena': 'Principio de Fermat',
+  'fermat.intuicion': 'Reflexión y refracción no son leyes independientes. Son consecuencias del mismo principio: la luz toma el camino de tiempo estacionario. Mueve el punto de rebote y observa cómo el tiempo se minimiza exactamente cuando θᵢ = θᵣ.',
+  'fermat.deduccion.titulo': 'Tiempo estacionario',
+  'fermat.deduccion.texto': 'δt = 0  →  θᵢ = θᵣ  (reflexión)  |  n₁ sin θ₁ = n₂ sin θ₂  (refracción)',
+  'fermat.deduccion.derivacion': 'Derivar el tiempo de viaje respecto al punto de reflexión P e igualar a cero. La condición δt/δP = 0 implica ángulos iguales en reflexión y la ley de Snell en refracción.',
+  'fermat.deduccion.ver': 'Ver el principio',
+  'fermat.deduccion.ocultar': 'Ocultar deducción',
+  'fermat.comenzar': 'Explorar el mínimo',
+
+  // Banco óptico — rayo/pinhole
+  'bench.pinhole.instruccion': 'Observa cómo la imagen se invierte al pasar por el agujero',
+  'bench.pinhole.completar': '¡Proyección invertida observada! La luz viaja en línea recta.',
+
+  // Banco óptico — reflexión
+  'bench.reflexion.instruccion': 'Arrastra el rayo para cambiar el ángulo de incidencia',
+  'bench.reflexion.blanco': 'Haz rebotar el rayo hacia el blanco',
+  'bench.reflexion.exito': '¡Impacto! θᵢ = θᵣ — la ley de reflexión en acción.',
+
+  // Fermat reflexión
+  'fermat.reflexion.titulo': 'Fermat en el espejo',
+  'fermat.reflexion.instruccion': 'Arrastra el punto P sobre el espejo para minimizar el tiempo de viaje.',
+  'fermat.reflexion.minimo': '¡Tiempo mínimo! — θᵢ = θᵣ se cumple aquí.',
+
+  // Desbloqueos adicionales
+  'desbloqueo.fuente': '¡Herramienta desbloqueada: Fuente de luz!',
+  'desbloqueo.fuente.descripcion': 'Ahora puedes añadir fuentes de luz en el banco libre.',
+  'desbloqueo.espejo-plano': '¡Herramienta desbloqueada: Espejo plano!',
+  'desbloqueo.espejo-plano.descripcion': 'Ahora puedes añadir espejos planos en el banco libre.',
 } as const;

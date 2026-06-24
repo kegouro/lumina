@@ -16,6 +16,9 @@ import { getCapitulo } from './content/chapters';
 import { marcarCompletado, desbloquearHerramienta, loadProgress } from './services/persistence';
 import { fade } from './cinematics';
 import { t } from './ui/i18n';
+import type { ObjetivoReflexionBlanco } from './content/chapters/types';
+import { trazarRayos } from './core/content/optics';
+import type { EscenaOptica } from './core/content/optics';
 
 /** Estado global de la aplicación */
 interface AppState {
@@ -26,6 +29,8 @@ interface AppState {
   thetaInc: number;        // radianes
   fermatMode: boolean;
   capituloActualId: string;
+  /** Posición x normalizada del objeto pinhole (solo en modo pinhole) */
+  pinholeObjX: number;
 }
 
 const STATE: AppState = {
@@ -36,6 +41,7 @@ const STATE: AppState = {
   thetaInc: Math.PI / 6,  // 30° por defecto
   fermatMode: false,
   capituloActualId: 'refraccion',
+  pinholeObjX: -0.55,
 };
 
 let appContainer: HTMLElement;
@@ -99,6 +105,7 @@ function irAlBanco(capituloId: string): void {
   STATE.screen = 'bench';
 
   const capitulo = getCapitulo(capituloId);
+  const objetivo = capitulo?.objetivo;
 
   // Wrapper del banco
   const wrapper = document.createElement('div');
@@ -118,30 +125,52 @@ function irAlBanco(capituloId: string): void {
     fade(wrapper, { from: 0, to: 1, duration: 500 });
   });
 
+  // Determinar modos según objetivo
+  const esPinhole = objetivo?.tipo === 'pinhole';
+  const esFermatReflexion = objetivo?.tipo === 'fermat-reflexion';
+  const esFermat = objetivo?.tipo === 'fermat';
+  const esReflexionBlanco = objetivo?.tipo === 'reflexion-blanco';
+
   // Banco Canvas2D con EscenaOptica del capítulo
   const benchConfig = {
     canvas,
     n1: STATE.n1,
     n2: STATE.n2,
     thetaInc: STATE.thetaInc,
-    fermatMode: STATE.fermatMode,
+    fermatMode: esFermat || esFermatReflexion,
+    ...(esPinhole ? {
+      pinholeMode: true,
+      pinholeSize: 0.08,
+      objetoX: STATE.pinholeObjX,
+    } : {}),
     onAngleChange(theta: number) {
       STATE.thetaInc = theta;
-      actualizarHUD();
+      actualizarHUD(capituloId);
+      // Detectar impacto en blanco para reflexion-blanco
+      if (esReflexionBlanco && objetivo?.tipo === 'reflexion-blanco') {
+        verificarImpactoBlanco(capitulo!.escenaBanco, objetivo, theta);
+      }
     },
     onFermatPChange(py: number) {
-      if (fermatHandle) fermatHandle.updateP(py);
+      if (esPinhole) {
+        // En modo pinhole reutilizamos este callback para el movimiento del objeto
+        STATE.pinholeObjX = py;
+        // Marcar interacción realizada (se completa al hacer clic en el botón)
+        pinholeInteractuado = true;
+      } else if (fermatHandle) {
+        fermatHandle.updateP(py);
+      }
     },
     ...(capitulo?.escenaBanco ? { escena: capitulo.escenaBanco } : {}),
   };
   bench = new Bench(benchConfig);
 
-  // HUD
-  hudHandle = mountHUD(appContainer, calcularHUDState());
+  // HUD — para reflexión mostramos θᵢ = θᵣ en vivo
+  hudHandle = mountHUD(appContainer, calcularHUDState(capituloId));
 
-  // Panel de Fermat solo si el objetivo es de tipo 'fermat'
-  if (capitulo?.objetivo.tipo === 'fermat') {
-    const obj = capitulo.objetivo;
+  // Panel por tipo de objetivo
+  if (esFermat && objetivo?.tipo === 'fermat') {
+    const obj = objetivo;
     fermatHandle = mountFermatPanel(appContainer, {
       n1: obj.n1,
       n2: obj.n2,
@@ -149,12 +178,91 @@ function irAlBanco(capituloId: string): void {
       B: obj.B,
       onMinimo: () => manejarDesbloqueo(capituloId),
     });
+  } else if (esFermatReflexion && objetivo?.tipo === 'fermat-reflexion') {
+    // Fermat en reflexión: n1=n2=1, A y B en el mismo lado
+    const obj = objetivo;
+    fermatHandle = mountFermatPanel(appContainer, {
+      n1: 1.0,
+      n2: 1.0,
+      A: obj.A,
+      B: obj.B,
+      onMinimo: () => manejarDesbloqueo(capituloId),
+    });
+  } else if (esPinhole) {
+    montarPanelPinhole(capituloId);
+  } else if (esReflexionBlanco && objetivo?.tipo === 'reflexion-blanco') {
+    montarPanelReflexion(capituloId, objetivo);
   }
+}
+
+// ── Panel pinhole ─────────────────────────────────────────────────────────────
+
+let pinholeInteractuado = false;
+let pinholePanel: HTMLElement | null = null;
+
+function montarPanelPinhole(capituloId: string): void {
+  pinholeInteractuado = false;
+  const panel = document.createElement('div');
+  panel.className = 'pinhole-panel';
+  panel.setAttribute('role', 'complementary');
+
+  panel.innerHTML = `
+    <div class="pinhole-panel__label">${t('bench.pinhole.instruccion')}</div>
+    <button id="btn-pinhole-ok" class="pinhole-panel__btn">
+      ${t('bench.pinhole.completar')}
+    </button>
+  `;
+
+  appContainer.appendChild(panel);
+  pinholePanel = panel;
+
+  panel.querySelector('#btn-pinhole-ok')?.addEventListener('click', () => {
+    pinholeInteractuado = true;
+    manejarDesbloqueo(capituloId);
+  });
+}
+
+// ── Panel reflexión blanco ────────────────────────────────────────────────────
+
+let reflexionPanel: HTMLElement | null = null;
+
+function montarPanelReflexion(capituloId: string, obj: ObjetivoReflexionBlanco): void {
+  const panel = document.createElement('div');
+  panel.className = 'reflexion-panel';
+  panel.setAttribute('role', 'complementary');
+
+  panel.innerHTML = `
+    <div class="reflexion-panel__label">${t('bench.reflexion.blanco')}</div>
+    <div class="reflexion-panel__angles" id="reflexion-angles">θᵢ = — | θᵣ = —</div>
+  `;
+
+  appContainer.appendChild(panel);
+  reflexionPanel = panel;
+
+  // Guardar referencia del objetivo para la verificación por ángulo
+  (panel as any)._obj = obj;
+  (panel as any)._capituloId = capituloId;
 }
 
 // ── HUD ─────────────────────────────────────────────────────────────────────
 
-function calcularHUDState() {
+function calcularHUDState(capituloId?: string) {
+  const capitulo = capituloId ? getCapitulo(capituloId) : undefined;
+  const objetivo = capitulo?.objetivo;
+  const esReflexion = objetivo?.tipo === 'reflexion-blanco' || objetivo?.tipo === 'fermat-reflexion';
+
+  if (esReflexion) {
+    // En reflexión θᵢ = θᵣ (n1=n2=1)
+    const thetaDeg = (STATE.thetaInc * 180) / Math.PI;
+    return {
+      n1: 1.0,
+      n2: 1.0,
+      theta1Deg: Math.abs(thetaDeg),
+      theta2Deg: Math.abs(thetaDeg),
+      tir: false,
+    };
+  }
+
   const r = refract(STATE.n1, STATE.n2, STATE.thetaInc);
   return {
     n1: STATE.n1,
@@ -165,8 +273,38 @@ function calcularHUDState() {
   };
 }
 
-function actualizarHUD(): void {
-  if (hudHandle) hudHandle.update(calcularHUDState());
+function actualizarHUD(capituloId?: string): void {
+  if (hudHandle) hudHandle.update(calcularHUDState(capituloId));
+  // Actualizar panel de reflexión si existe
+  if (reflexionPanel) {
+    const thetaDeg = Math.abs((STATE.thetaInc * 180) / Math.PI).toFixed(1);
+    const anglesEl = reflexionPanel.querySelector('#reflexion-angles');
+    if (anglesEl) {
+      anglesEl.textContent = `θᵢ = ${thetaDeg}° | θᵣ = ${thetaDeg}°`;
+    }
+  }
+}
+
+// Verificar si el rayo reflejado impacta el blanco
+function verificarImpactoBlanco(
+  escena: EscenaOptica,
+  obj: ObjetivoReflexionBlanco,
+  _theta: number
+): void {
+  const escenaActual: EscenaOptica = {
+    elementos: escena.elementos.map(el => {
+      if (el.tipo === 'fuente') return { ...el, angulo: STATE.thetaInc };
+      return el;
+    }),
+  };
+  const puntos = trazarRayos(escenaActual, 0.95);
+  if (puntos.length >= 3) {
+    // El último punto es la extensión final del rayo reflejado
+    const lastY = puntos[puntos.length - 1]!.y;
+    if (Math.abs(lastY - obj.blancoY) < obj.tolerancia) {
+      manejarDesbloqueo(STATE.capituloActualId);
+    }
+  }
 }
 
 // ── Desbloqueo ───────────────────────────────────────────────────────────────
@@ -179,23 +317,34 @@ function manejarDesbloqueo(capituloId: string): void {
   marcarCompletado(capituloId);
 
   // Desbloquear la herramienta asociada al objetivo del capítulo
-  if (capitulo?.objetivo.tipo === 'fermat') {
+  const tipo = capitulo?.objetivo.tipo;
+  if (tipo === 'fermat') {
     desbloquearHerramienta('interfaz');
+    mostrarBannerDesbloqueo('desbloqueo.interfaz', 'desbloqueo.descripcion');
+  } else if (tipo === 'pinhole') {
+    desbloquearHerramienta('fuente');
+    mostrarBannerDesbloqueo('desbloqueo.fuente', 'desbloqueo.fuente.descripcion');
+  } else if (tipo === 'reflexion-blanco') {
+    desbloquearHerramienta('espejo-plano');
+    mostrarBannerDesbloqueo('desbloqueo.espejo-plano', 'desbloqueo.espejo-plano.descripcion');
+  } else if (tipo === 'fermat-reflexion') {
+    desbloquearHerramienta('espejo-plano');
+    mostrarBannerDesbloqueo('desbloqueo.espejo-plano', 'desbloqueo.espejo-plano.descripcion');
+  } else {
+    mostrarBannerDesbloqueo('desbloqueo.interfaz', 'desbloqueo.descripcion');
   }
-
-  mostrarBannerDesbloqueo();
 }
 
-function mostrarBannerDesbloqueo(): void {
+function mostrarBannerDesbloqueo(tituloKey: import('./ui/i18n').TranslationKey, descripKey: import('./ui/i18n').TranslationKey): void {
   const banner = document.createElement('div');
   banner.className = 'unlock-banner';
   banner.setAttribute('role', 'dialog');
   banner.setAttribute('aria-modal', 'true');
-  banner.setAttribute('aria-label', t('desbloqueo.interfaz'));
+  banner.setAttribute('aria-label', t(tituloKey));
 
   banner.innerHTML = `
-    <h2>${t('desbloqueo.interfaz')}</h2>
-    <p>${t('desbloqueo.descripcion')}</p>
+    <h2>${t(tituloKey)}</h2>
+    <p>${t(descripKey)}</p>
     <button id="btn-cerrar-banner">${t('refraccion.comenzar')}</button>
   `;
 
@@ -221,6 +370,9 @@ function limpiarPantalla(): void {
   hudHandle = null;
   fermatHandle?.destroy();
   fermatHandle = null;
+  pinholePanel = null;
+  reflexionPanel = null;
+  pinholeInteractuado = false;
 
   // Limpiar DOM (excepto el appContainer)
   while (appContainer.firstChild) {

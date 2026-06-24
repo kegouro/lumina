@@ -25,7 +25,7 @@ export interface EscenaCinematica {
   comenzarKey: string;
 }
 
-/** Objetivo tipo Fermat: minimizar el camino óptico */
+/** Objetivo tipo Fermat: minimizar el camino óptico en refracción */
 export interface ObjetivoFermat {
   tipo: 'fermat';
   n1: number;
@@ -34,8 +34,33 @@ export interface ObjetivoFermat {
   B: { x: number; y: number };
 }
 
+/** Objetivo tipo pinhole: observar la proyección invertida (capítulo rayo) */
+export interface ObjetivoRayo {
+  tipo: 'pinhole';
+}
+
+/** Objetivo tipo blanco de reflexión: hacer rebotar el rayo hacia el blanco */
+export interface ObjetivoReflexionBlanco {
+  tipo: 'reflexion-blanco';
+  /** Posición normalizada del blanco en Y */
+  blancoY: number;
+  /** Tolerancia normalizada para considerar el impacto como éxito */
+  tolerancia: number;
+}
+
+/** Objetivo tipo Fermat generalizado: mínimo de camino en reflexión */
+export interface ObjetivoFermatReflexion {
+  tipo: 'fermat-reflexion';
+  A: { x: number; y: number };
+  B: { x: number; y: number };
+}
+
 /** Unión de objetivos posibles (extensible con nuevos tipos) */
-export type Objetivo = ObjetivoFermat;
+export type Objetivo =
+  | ObjetivoFermat
+  | ObjetivoRayo
+  | ObjetivoReflexionBlanco
+  | ObjetivoFermatReflexion;
 
 /** Descripción completa de un capítulo */
 export interface Capitulo {

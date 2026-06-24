@@ -35,13 +35,11 @@ export const CONCEPTOS: Concepto[] = [
     herramienta: 'espejo-plano',
   },
   {
-    // Refracción no requiere completar 'rayo' primero porque 'rayo' aún
-    // no tiene capítulo jugable — se desbloquea desde el inicio.
     id: 'refraccion',
     titulo: 'Refracción',
     ordenPedagogico: 3,
     fechaHistorica: 1621,
-    prereqs: [],
+    prereqs: ['reflexion'],
     herramienta: 'interfaz',
   },
   {
@@ -49,7 +47,7 @@ export const CONCEPTOS: Concepto[] = [
     titulo: 'Principio de Fermat',
     ordenPedagogico: 4,
     fechaHistorica: 1662,
-    prereqs: ['refraccion'],
+    prereqs: ['refraccion', 'reflexion'],
   },
   {
     id: 'dispersion',

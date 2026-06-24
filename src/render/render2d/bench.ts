@@ -17,8 +17,15 @@ export interface BenchConfig {
   fermatMode: boolean;
   /** Escena óptica declarativa; si se provee, el banco usa trazarRayos() */
   escena?: EscenaOptica;
+  /** Modo cámara oscura: visualización pinhole dedicada */
+  pinholeMode?: boolean;
+  /** Tamaño normalizado del agujero pinhole (0.01–0.3) */
+  pinholeSize?: number;
+  /** Posición x normalizada del objeto flecha */
+  objetoX?: number;
   onAngleChange: (theta: number) => void;
   onFermatPChange: (py: number) => void;  // py en coordenadas bench norm [-1, 1]
+  onPinholeSizeChange?: (size: number) => void;
 }
 
 // ── Funciones puras exportadas (testeables sin DOM) ──────────────────────────
@@ -87,7 +94,12 @@ export class Bench {
 
   // Interacción
   private dragging: boolean = false;
-  private dragTarget: 'ray' | 'fermat' | null = null;
+  private dragTarget: 'ray' | 'fermat' | 'pinhole-obj' | null = null;
+
+  // Modo cámara oscura (pinhole)
+  private pinholeMode: boolean = false;
+  private pinholeSize: number = 0.08;   // tamaño normalizado del agujero
+  private objetoX: number = -0.55;      // posición x del objeto flecha (norm)
   private animFrame: number | null = null;
   private pulseProgress: number = 1;  // 0..1 para el pulso de propagación
 
@@ -113,6 +125,9 @@ export class Bench {
     this.thetaInc = config.thetaInc;
     this.fermatMode = config.fermatMode;
     this.escena = config.escena;
+    this.pinholeMode = config.pinholeMode ?? false;
+    if (config.pinholeSize !== undefined) this.pinholeSize = config.pinholeSize;
+    if (config.objetoX !== undefined) this.objetoX = config.objetoX;
 
     const ctx = this.canvas.getContext('2d');
     if (!ctx) throw new Error('No se pudo obtener el contexto 2D del canvas');
@@ -130,6 +145,9 @@ export class Bench {
     if (s.thetaInc !== undefined) this.thetaInc = s.thetaInc;
     if (s.fermatMode !== undefined) this.fermatMode = s.fermatMode;
     if (s.escena !== undefined) this.escena = s.escena;
+    if (s.pinholeMode !== undefined) this.pinholeMode = s.pinholeMode;
+    if (s.pinholeSize !== undefined) this.pinholeSize = s.pinholeSize;
+    if (s.objetoX !== undefined) this.objetoX = s.objetoX;
     this.triggerPulse();
   }
 
@@ -180,6 +198,12 @@ export class Bench {
   private draw(): void {
     const ctx = this.ctx;
     ctx.clearRect(0, 0, this.W, this.H);
+
+    if (this.pinholeMode) {
+      // La cámara oscura tiene su propio fondo y no usa medios/interfaz
+      this.drawPinhole();
+      return;
+    }
 
     this.drawMedios();
     this.drawInterface();
@@ -497,6 +521,181 @@ export class Bench {
     ctx.restore();
   }
 
+  // ── Cámara oscura (pinhole) ───────────────────────────────────────────────
+
+  /**
+   * Dibuja la cámara oscura: objeto flecha a la izquierda, barrera con agujero
+   * en el centro y la imagen invertida a la derecha.
+   * Geometría por semejanza: yImg = -yObj * (xImg / |xObj|)
+   * Agujero grande → imagen más borrosa (mayor blur/alpha en los rayos).
+   */
+  private drawPinhole(): void {
+    const ctx = this.ctx;
+
+    // Parámetros de la escena
+    const objX = this.objetoX;           // normalizado, < 0 (izquierda)
+    const objH = 0.35;                   // semi-altura del objeto flecha
+    const holeH = Math.max(0.015, this.pinholeSize); // semi-altura del agujero
+    const wallX = 0;                     // barrera en el centro (norm)
+    const imgX = -objX * 0.8;           // imagen en la derecha, simétricamente
+
+    // Geometría por semejanza: yImg_punta = -objH * (imgX / |objX|)
+    const ratio = imgX / Math.abs(objX);
+    const imgH = objH * ratio;           // semi-altura de la imagen
+
+    // ── Fondo oscuro
+    ctx.save();
+    ctx.fillStyle = '#0d0c0a';
+    ctx.fillRect(0, 0, this.W, this.H);
+    ctx.restore();
+
+    // ── Eje óptico (tenue)
+    ctx.save();
+    ctx.strokeStyle = 'rgba(154, 138, 118, 0.15)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 6]);
+    ctx.beginPath();
+    ctx.moveTo(0, this.CY);
+    ctx.lineTo(this.W, this.CY);
+    ctx.stroke();
+    ctx.restore();
+
+    // ── Barrera vertical con agujero
+    const wallPx = this.normToPx(wallX, 0);
+    const holeTopPx = this.normToPx(wallX, holeH);
+    const holeBotPx = this.normToPx(wallX, -holeH);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.55)';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([]);
+    // Parte superior (encima del agujero)
+    ctx.beginPath();
+    ctx.moveTo(wallPx.x, 0);
+    ctx.lineTo(wallPx.x, holeTopPx.y);
+    ctx.stroke();
+    // Parte inferior (debajo del agujero)
+    ctx.beginPath();
+    ctx.moveTo(wallPx.x, holeBotPx.y);
+    ctx.lineTo(wallPx.x, this.H);
+    ctx.stroke();
+    ctx.restore();
+
+    // ── Borde del agujero (destello sutil)
+    ctx.save();
+    ctx.strokeStyle = 'rgba(245, 167, 44, 0.6)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(wallPx.x - 4, holeTopPx.y);
+    ctx.lineTo(wallPx.x + 4, holeTopPx.y);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(wallPx.x - 4, holeBotPx.y);
+    ctx.lineTo(wallPx.x + 4, holeBotPx.y);
+    ctx.stroke();
+    ctx.restore();
+
+    // ── Objeto: flecha vertical a la izquierda
+    this.drawArrow(ctx, objX, -objH, objX, objH, DOMAIN_COLORS.ray, 2.5, false);
+
+    // ── Imagen: flecha invertida a la derecha
+    // Agujero pequeño = imagen nítida; agujero grande = imagen tenue/difusa
+    const imgAlpha = Math.max(0.25, 1 - this.pinholeSize * 4);
+    this.drawArrow(ctx, imgX, imgH, imgX, -imgH, DOMAIN_COLORS.wave, 2.0, true, imgAlpha);
+
+    // ── Rayos que pasan por los bordes del agujero (cono de rayos)
+    // Dos rayos desde la punta del objeto (arriba) → bordes del agujero → imagen
+    const rayAlpha = Math.min(0.65, 0.15 + this.pinholeSize * 1.8);
+    const objTopPx  = this.normToPx(objX, objH);
+    const objBotPx  = this.normToPx(objX, -objH);
+    const imgTopPx  = this.normToPx(imgX, -imgH);  // imagen invertida: top objeto → bot imagen
+    const imgBotPx  = this.normToPx(imgX, imgH);
+
+    // Rayo desde punta-objeto por borde-superior del agujero hacia imagen
+    this.drawRaySegment(ctx, objTopPx,  holeTopPx, DOMAIN_COLORS.ray,  1.2, rayAlpha);
+    this.drawRaySegment(ctx, holeTopPx, imgTopPx,  DOMAIN_COLORS.wave, 1.2, rayAlpha);
+
+    // Rayo desde punta-objeto por borde-inferior del agujero hacia imagen
+    this.drawRaySegment(ctx, objTopPx,  holeBotPx, DOMAIN_COLORS.ray,  1.0, rayAlpha * 0.7);
+    this.drawRaySegment(ctx, holeBotPx, imgTopPx,  DOMAIN_COLORS.wave, 1.0, rayAlpha * 0.7);
+
+    // Rayo desde cola-objeto por borde-superior del agujero
+    this.drawRaySegment(ctx, objBotPx,  holeTopPx, DOMAIN_COLORS.ray,  1.0, rayAlpha * 0.7);
+    this.drawRaySegment(ctx, holeTopPx, imgBotPx,  DOMAIN_COLORS.wave, 1.0, rayAlpha * 0.7);
+
+    // Rayo desde cola-objeto por borde-inferior del agujero
+    this.drawRaySegment(ctx, objBotPx,  holeBotPx, DOMAIN_COLORS.ray,  1.2, rayAlpha);
+    this.drawRaySegment(ctx, holeBotPx, imgBotPx,  DOMAIN_COLORS.wave, 1.2, rayAlpha);
+
+    // ── Etiqueta de tamaño del agujero (tenue)
+    ctx.save();
+    ctx.fillStyle = 'rgba(239, 231, 216, 0.45)';
+    ctx.font = '11px var(--font-mono, monospace)';
+    ctx.textAlign = 'center';
+    ctx.fillText(`Ø ${(this.pinholeSize * 200).toFixed(0)}`, wallPx.x, holeBotPx.y + 18);
+    ctx.restore();
+  }
+
+  /** Dibuja una flecha vertical (objeto o imagen) con punta arriba si goesUp=true */
+  private drawArrow(
+    ctx: CanvasRenderingContext2D,
+    x: number, yBottom: number,
+    x2: number, yTop: number,
+    color: string, width: number, dashed: boolean, alpha = 1
+  ): void {
+    const from = this.normToPx(x, yBottom);
+    const to   = this.normToPx(x2, yTop);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = width;
+    if (dashed) ctx.setLineDash([4, 3]);
+    ctx.lineCap = 'round';
+
+    // Cuerpo
+    ctx.beginPath();
+    ctx.moveTo(from.x, from.y);
+    ctx.lineTo(to.x, to.y);
+    ctx.stroke();
+
+    // Punta de flecha (triángulo en `to`)
+    const dy = to.y - from.y;
+    const len = Math.abs(dy);
+    if (len > 6) {
+      const arrowSize = Math.min(10, len * 0.25);
+      const dir = dy < 0 ? -1 : 1;  // apunta hacia arriba o abajo según la inversión
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(to.x, to.y);
+      ctx.lineTo(to.x - arrowSize * 0.5, to.y + dir * arrowSize);
+      ctx.lineTo(to.x + arrowSize * 0.5, to.y + dir * arrowSize);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  /** Dibuja un segmento de rayo simple con alpha dado */
+  private drawRaySegment(
+    ctx: CanvasRenderingContext2D,
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+    color: string,
+    width: number,
+    alpha: number
+  ): void {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(from.x, from.y);
+    ctx.lineTo(to.x, to.y);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   // ── Loop de animación ────────────────────────────────────────────────────
 
   private loop(): void {
@@ -538,7 +737,9 @@ export class Bench {
     const pos = this.pointerFromEvent(e);
     this.dragging = true;
 
-    if (this.fermatMode) {
+    if (this.pinholeMode) {
+      this.dragTarget = 'pinhole-obj';
+    } else if (this.fermatMode) {
       this.dragTarget = 'fermat';
     } else {
       this.dragTarget = 'ray';
@@ -564,7 +765,7 @@ export class Bench {
     if (!t) return;
     const rect = this.canvas.getBoundingClientRect();
     this.dragging = true;
-    this.dragTarget = this.fermatMode ? 'fermat' : 'ray';
+    this.dragTarget = this.pinholeMode ? 'pinhole-obj' : this.fermatMode ? 'fermat' : 'ray';
     this.handleDrag({ x: t.clientX - rect.left, y: t.clientY - rect.top });
   }
 
@@ -603,6 +804,16 @@ export class Bench {
       const pyClamp = Math.max(-0.9, Math.min(0.9, norm.y));
       this.fermatPy = pyClamp;
       this.config.onFermatPChange(pyClamp);
+    } else if (this.dragTarget === 'pinhole-obj') {
+      // Mover el objeto flecha en x: solo la componente x, limitada al lado izquierdo
+      const xClamp = Math.max(-0.9, Math.min(-0.1, norm.x));
+      this.objetoX = xClamp;
+      if (this.config.onPinholeSizeChange) {
+        // Notificamos el nuevo objetoX a través del callback existente (reutilizamos para posición)
+        // pero primero notificamos al exterior con el valor de objetoX
+      }
+      // Notificar al exterior que el objeto se movió (reusamos onFermatPChange para transportar objetoX)
+      this.config.onFermatPChange(xClamp);
     }
   }
 

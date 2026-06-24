@@ -3,11 +3,17 @@
 // capituloDisponible(id) indica si tiene implementación (no si está desbloqueado).
 
 import type { Capitulo } from './types';
+import { capituloRayo } from './rayo';
+import { capituloReflexion } from './reflexion';
 import { capituloRefraccion } from './refraccion';
+import { capituloFermat } from './fermat';
 
 /** Mapa de capítulos implementados (conceptoId → Capitulo) */
 const CAPITULOS: Map<string, Capitulo> = new Map([
+  ['rayo', capituloRayo],
+  ['reflexion', capituloReflexion],
   ['refraccion', capituloRefraccion],
+  ['fermat', capituloFermat],
 ]);
 
 /**
