@@ -6,6 +6,8 @@
 
 import { refract, criticalAngle } from '../../core/snell';
 import { DOMAIN_COLORS } from '../../core/colors';
+import type { EscenaOptica } from '../../core/content/optics';
+import { trazarRayos } from '../../core/content/optics';
 
 export interface BenchConfig {
   canvas: HTMLCanvasElement;
@@ -13,6 +15,8 @@ export interface BenchConfig {
   n2: number;
   thetaInc: number;          // radianes, positivo = hacia arriba desde el eje
   fermatMode: boolean;
+  /** Escena óptica declarativa; si se provee, el banco usa trazarRayos() */
+  escena?: EscenaOptica;
   onAngleChange: (theta: number) => void;
   onFermatPChange: (py: number) => void;  // py en coordenadas bench norm [-1, 1]
 }
@@ -78,6 +82,7 @@ export class Bench {
   private n2: number;
   private thetaInc: number;
   private fermatMode: boolean;
+  private escena: EscenaOptica | undefined;
   private fermatPy: number = 0;  // py normalizado en coordenadas "bench" (no canvas px)
 
   // Interacción
@@ -107,6 +112,7 @@ export class Bench {
     this.n2 = config.n2;
     this.thetaInc = config.thetaInc;
     this.fermatMode = config.fermatMode;
+    this.escena = config.escena;
 
     const ctx = this.canvas.getContext('2d');
     if (!ctx) throw new Error('No se pudo obtener el contexto 2D del canvas');
@@ -123,6 +129,7 @@ export class Bench {
     if (s.n2 !== undefined) this.n2 = s.n2;
     if (s.thetaInc !== undefined) this.thetaInc = s.thetaInc;
     if (s.fermatMode !== undefined) this.fermatMode = s.fermatMode;
+    if (s.escena !== undefined) this.escena = s.escena;
     this.triggerPulse();
   }
 
@@ -225,8 +232,98 @@ export class Bench {
     ctx.restore();
   }
 
-  /** Dibuja el sistema de rayo con Snell exacto + pulso de propagación */
+  /** Despacha al trazador nuevo (EscenaOptica) o al legacy según configuración */
   private drawRay(): void {
+    if (this.escena) {
+      this.drawRayDesdeEscena();
+    } else {
+      this.drawRayLegacy();
+    }
+  }
+
+  /**
+   * Dibuja el rayo usando trazarRayos() sobre la EscenaOptica declarativa.
+   * Sobreescribe el ángulo/índices con el estado interactivo actual.
+   */
+  private drawRayDesdeEscena(): void {
+    if (!this.escena) return;
+    const ctx = this.ctx;
+
+    // Construir escena con el estado interactivo actual
+    const escenaActual: EscenaOptica = {
+      elementos: this.escena.elementos.map(el => {
+        if (el.tipo === 'fuente') {
+          return { ...el, angulo: this.thetaInc };
+        }
+        if (el.tipo === 'interfaz') {
+          return { ...el, n1: this.n1, n2: this.n2 };
+        }
+        return el;
+      }),
+    };
+
+    const puntos = trazarRayos(escenaActual, 0.95);
+    if (puntos.length < 2) return;
+
+    const rayColor = DOMAIN_COLORS.ray;
+    const segCount = puntos.length - 1;
+    const segSize = 1 / segCount;
+
+    for (let i = 0; i < segCount; i++) {
+      const from = this.normToPx(puntos[i]!.x, puntos[i]!.y);
+      const to   = this.normToPx(puntos[i + 1]!.x, puntos[i + 1]!.y);
+      // El color TIR se aplica al segmento saliente tras el punto marcado
+      const esTIR = puntos[i]!.tir === true;
+      const color = esTIR ? '#ff7a3c' : rayColor;
+      this.drawSegmentAA(ctx, from, to, color, 2.0, this.pulseProgress, i * segSize, (i + 1) * segSize);
+    }
+
+    // Marcador de la fuente
+    const fuenteEl = escenaActual.elementos.find(e => e.tipo === 'fuente');
+    if (fuenteEl && fuenteEl.tipo === 'fuente') {
+      const src = this.normToPx(fuenteEl.x, fuenteEl.y);
+      ctx.save();
+      ctx.fillStyle = rayColor;
+      ctx.shadowColor = rayColor;
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.arc(src.x, src.y, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Marcador del punto de cruce (primer punto tras la fuente)
+    if (puntos.length >= 2) {
+      const cruce = this.normToPx(puntos[1]!.x, puntos[1]!.y);
+      ctx.save();
+      ctx.strokeStyle = 'rgba(245,167,44,0.5)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(cruce.x, cruce.y, 5, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Ángulo crítico indicator (arco en el punto de cruce)
+    const interfazEl = escenaActual.elementos.find(e => e.tipo === 'interfaz');
+    if (interfazEl && interfazEl.tipo === 'interfaz' && puntos.length >= 2) {
+      const cruce = this.normToPx(puntos[1]!.x, puntos[1]!.y);
+      const ca = criticalAngle(interfazEl.n1, interfazEl.n2);
+      if (ca !== null) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255, 122, 60, 0.3)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 5]);
+        ctx.beginPath();
+        ctx.arc(cruce.x, cruce.y, 40, -Math.PI / 2, -Math.PI / 2 + ca);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+  }
+
+  /** Dibuja el sistema de rayo con Snell exacto + pulso de propagación (modo legacy sin EscenaOptica) */
+  private drawRayLegacy(): void {
     const ctx = this.ctx;
     const result = refract(this.n1, this.n2, this.thetaInc);
 

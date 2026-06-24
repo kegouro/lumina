@@ -18,6 +18,7 @@
   --color-rayo: #f5a72c;    /* óptica geométrica / rayos */
   --color-haz: #34d399;     /* haz gaussiano */
   --color-onda: #38bdf8;    /* óptica ondulatoria */
+  --color-wave: #38bdf8;    /* alias de --color-onda (cian, ondulatoria) */
 
   /* Tipografías */
   --font-display: 'Fraunces', Georgia, serif;

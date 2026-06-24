@@ -1,5 +1,5 @@
 // app.ts — orquestador principal de Lumina.
-// Fuente única de estado. Coordina startmenu ↔ story ↔ bench ↔ HUD ↔ Fermat ↔ persistencia.
+// Fuente única de estado. Coordina startmenu ↔ mapa ↔ story ↔ bench ↔ HUD ↔ Fermat ↔ persistencia.
 
 import { setLang } from './ui/i18n';
 import type { Lang } from './ui/i18n';
@@ -9,8 +9,10 @@ import { mountHUD } from './ui/hud';
 import type { HUDHandle } from './ui/hud';
 import { mountFermatPanel } from './ui/fermat';
 import type { FermatHandle } from './ui/fermat';
+import { mountMap } from './ui/map';
 import { Bench } from './render/render2d';
 import { refract } from './core/snell';
+import { getCapitulo } from './content/chapters';
 import { marcarCompletado, desbloquearHerramienta, loadProgress } from './services/persistence';
 import { fade } from './cinematics';
 import { t } from './ui/i18n';
@@ -23,6 +25,7 @@ interface AppState {
   n2: number;
   thetaInc: number;        // radianes
   fermatMode: boolean;
+  capituloActualId: string;
 }
 
 const STATE: AppState = {
@@ -32,6 +35,7 @@ const STATE: AppState = {
   n2: 1.33,
   thetaInc: Math.PI / 6,  // 30° por defecto
   fermatMode: false,
+  capituloActualId: 'refraccion',
 };
 
 let appContainer: HTMLElement;
@@ -45,7 +49,7 @@ export function init(): void {
   if (!el) throw new Error('No se encontró #app en el DOM');
   appContainer = el;
 
-  // Recuperar progreso guardado (para futuras rutas)
+  // Recuperar progreso guardado
   loadProgress();
 
   irAMenu();
@@ -59,7 +63,7 @@ function irAMenu(): void {
 
   mountStartMenu(appContainer, {
     lang: STATE.lang,
-    onHistoria: irAStory,
+    onHistoria: irAlMapa,
     onLaboratorio: () => { /* stub Fase 0 */ },
     onLangChange(lang) {
       STATE.lang = lang;
@@ -68,19 +72,33 @@ function irAMenu(): void {
   });
 }
 
-function irAStory(): void {
+function irAlMapa(): void {
   limpiarPantalla();
   STATE.screen = 'story';
 
-  mountStory(appContainer, {
-    capituloId: 'refraccion',
-    onComenzar: irAlBanco,
+  mountMap(appContainer, {
+    onCapitulo(id) {
+      STATE.capituloActualId = id;
+      irAStory(id);
+    },
+    onVolver: irAMenu,
   });
 }
 
-function irAlBanco(): void {
+function irAStory(capituloId: string): void {
+  limpiarPantalla();
+
+  mountStory(appContainer, {
+    capituloId,
+    onComenzar: () => irAlBanco(capituloId),
+  });
+}
+
+function irAlBanco(capituloId: string): void {
   limpiarPantalla();
   STATE.screen = 'bench';
+
+  const capitulo = getCapitulo(capituloId);
 
   // Wrapper del banco
   const wrapper = document.createElement('div');
@@ -100,35 +118,38 @@ function irAlBanco(): void {
     fade(wrapper, { from: 0, to: 1, duration: 500 });
   });
 
-  // Banco Canvas2D
-  bench = new Bench({
+  // Banco Canvas2D con EscenaOptica del capítulo
+  const benchConfig = {
     canvas,
     n1: STATE.n1,
     n2: STATE.n2,
     thetaInc: STATE.thetaInc,
     fermatMode: STATE.fermatMode,
-    onAngleChange(theta) {
+    onAngleChange(theta: number) {
       STATE.thetaInc = theta;
       actualizarHUD();
     },
-    onFermatPChange(py) {
+    onFermatPChange(py: number) {
       if (fermatHandle) fermatHandle.updateP(py);
     },
-  });
+    ...(capitulo?.escenaBanco ? { escena: capitulo.escenaBanco } : {}),
+  };
+  bench = new Bench(benchConfig);
 
   // HUD
   hudHandle = mountHUD(appContainer, calcularHUDState());
 
-  // Panel de Fermat (siempre visible en el banco de refracción Fase 0)
-  const FERMAT_A = { x: -0.55, y: -0.3 };
-  const FERMAT_B = { x: 0.55, y: 0.22 };
-  fermatHandle = mountFermatPanel(appContainer, {
-    n1: STATE.n1,
-    n2: STATE.n2,
-    A: FERMAT_A,
-    B: FERMAT_B,
-    onMinimo: manejarDesbloqueo,
-  });
+  // Panel de Fermat solo si el objetivo es de tipo 'fermat'
+  if (capitulo?.objetivo.tipo === 'fermat') {
+    const obj = capitulo.objetivo;
+    fermatHandle = mountFermatPanel(appContainer, {
+      n1: obj.n1,
+      n2: obj.n2,
+      A: obj.A,
+      B: obj.B,
+      onMinimo: () => manejarDesbloqueo(capituloId),
+    });
+  }
 }
 
 // ── HUD ─────────────────────────────────────────────────────────────────────
@@ -150,12 +171,17 @@ function actualizarHUD(): void {
 
 // ── Desbloqueo ───────────────────────────────────────────────────────────────
 
-function manejarDesbloqueo(): void {
+function manejarDesbloqueo(capituloId: string): void {
   if (desbloqueadoYa) return;
   desbloqueadoYa = true;
 
-  marcarCompletado('refraccion');
-  desbloquearHerramienta('interfaz');
+  const capitulo = getCapitulo(capituloId);
+  marcarCompletado(capituloId);
+
+  // Desbloquear la herramienta asociada al objetivo del capítulo
+  if (capitulo?.objetivo.tipo === 'fermat') {
+    desbloquearHerramienta('interfaz');
+  }
 
   mostrarBannerDesbloqueo();
 }

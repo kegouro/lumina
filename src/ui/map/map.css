@@ -1,0 +1,167 @@
+/* Mapa de progresión — sendero vertical de nodos */
+.mapa {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2rem 1rem;
+  gap: 0;
+  min-height: 100%;
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+.mapa__titulo {
+  font-family: var(--font-display, serif);
+  font-size: 1.4rem;
+  color: var(--color-ink, #efe7d8);
+  margin-bottom: 2rem;
+  text-align: center;
+  opacity: 0.9;
+}
+
+.mapa__nodos {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  width: 100%;
+}
+
+/* Conector vertical entre nodos */
+.mapa__conector {
+  width: 2px;
+  height: 32px;
+  background: var(--color-linea, #2a2118);
+  flex-shrink: 0;
+}
+
+.mapa__conector--activo {
+  background: linear-gradient(to bottom, var(--color-beam, #f5a72c), var(--color-linea, #2a2118));
+}
+
+/* Nodo del mapa */
+.mapa-nodo {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+  max-width: 360px;
+  padding: 0.875rem 1.25rem;
+  border-radius: 10px;
+  border: 1.5px solid var(--color-linea, #2a2118);
+  background: var(--color-panel, #15110d);
+  cursor: default;
+  transition: border-color 0.2s, background 0.2s;
+  position: relative;
+}
+
+.mapa-nodo:focus-visible {
+  outline: 2px solid var(--color-beam, #f5a72c);
+  outline-offset: 2px;
+}
+
+.mapa-nodo--disponible {
+  border-color: var(--color-beam, #f5a72c);
+  cursor: pointer;
+}
+
+.mapa-nodo--disponible:hover {
+  background: rgba(245, 167, 44, 0.07);
+}
+
+.mapa-nodo--completado {
+  border-color: var(--color-wave, #38bdf8);
+  cursor: pointer;
+}
+
+.mapa-nodo--completado:hover {
+  background: rgba(56, 189, 248, 0.05);
+}
+
+.mapa-nodo--bloqueado {
+  opacity: 0.45;
+}
+
+.mapa-nodo--proximamente {
+  opacity: 0.35;
+}
+
+/* Icono del estado */
+.mapa-nodo__icono {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+}
+
+.mapa-nodo__icono--completado {
+  background: rgba(56, 189, 248, 0.15);
+  color: var(--color-wave, #38bdf8);
+  border: 1.5px solid var(--color-wave, #38bdf8);
+}
+
+.mapa-nodo__icono--disponible {
+  background: rgba(245, 167, 44, 0.15);
+  color: var(--color-beam, #f5a72c);
+  border: 1.5px solid var(--color-beam, #f5a72c);
+}
+
+.mapa-nodo__icono--bloqueado {
+  background: rgba(154, 138, 118, 0.08);
+  color: var(--color-muted, #9a8a76);
+  border: 1.5px solid var(--color-linea, #2a2118);
+}
+
+.mapa-nodo__cuerpo {
+  flex: 1;
+  min-width: 0;
+}
+
+.mapa-nodo__titulo {
+  font-size: 0.95rem;
+  color: var(--color-ink, #efe7d8);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mapa-nodo__estado {
+  font-size: 0.72rem;
+  color: var(--color-muted, #9a8a76);
+  margin-top: 0.15rem;
+}
+
+.mapa-nodo--completado .mapa-nodo__estado {
+  color: var(--color-wave, #38bdf8);
+}
+
+.mapa-nodo--disponible .mapa-nodo__estado {
+  color: var(--color-beam, #f5a72c);
+}
+
+.mapa__volver {
+  margin-top: 2.5rem;
+  font-size: 0.8rem;
+  color: var(--color-muted, #9a8a76);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  transition: color 0.2s;
+}
+
+.mapa__volver:hover {
+  color: var(--color-ink, #efe7d8);
+}
+
+.mapa__volver:focus-visible {
+  outline: 2px solid var(--color-beam, #f5a72c);
+  outline-offset: 2px;
+}

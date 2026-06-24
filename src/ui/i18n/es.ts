@@ -64,4 +64,15 @@ export const es = {
   // Desbloqueo
   'desbloqueo.interfaz': '¡Herramienta desbloqueada: Interfaz/Medio!',
   'desbloqueo.descripcion': 'Ahora puedes añadir interfaces con distintos índices en el banco libre.',
+
+  // Mapa de progresión
+  'mapa.titulo': 'Acto I — La luz como rayo',
+  'mapa.nodo.bloqueado': 'Bloqueado',
+  'mapa.nodo.disponible': 'Disponible',
+  'mapa.nodo.completado': 'Completado',
+  'mapa.nodo.proximamente': 'Próximamente',
+  'mapa.nodo.prereqs': 'Requiere completar antes:',
+  'mapa.volver': 'Volver al menú',
+  'mapa.ruta.pedagogica': 'Ruta pedagógica',
+  'mapa.ruta.historica': 'Ruta histórica',
 } as const;

@@ -67,4 +67,15 @@ export const en: Record<keyof typeof es, string> = {
   // Unlock
   'desbloqueo.interfaz': 'Tool unlocked: Interface/Medium!',
   'desbloqueo.descripcion': 'You can now add interfaces with different indices in the free lab.',
+
+  // Progress map
+  'mapa.titulo': 'Act I — Light as a Ray',
+  'mapa.nodo.bloqueado': 'Locked',
+  'mapa.nodo.disponible': 'Available',
+  'mapa.nodo.completado': 'Completed',
+  'mapa.nodo.proximamente': 'Coming soon',
+  'mapa.nodo.prereqs': 'Requires completing first:',
+  'mapa.volver': 'Back to menu',
+  'mapa.ruta.pedagogica': 'Pedagogical route',
+  'mapa.ruta.historica': 'Historical route',
 };
