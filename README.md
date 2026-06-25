@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="public/banner.png" alt="Lumina Banner" width="100%" style="max-width: 800px; border-radius: 8px;" />
+  <img src="public/banner.svg" alt="Lumina Banner" width="100%" style="max-width: 800px; border-radius: 8px;" />
 
   # Lumina
 
